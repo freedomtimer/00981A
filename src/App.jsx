@@ -1,30 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity } from 'lucide-react';
 
-// === 新增：產生 30 天模擬展示資料的輔助函式 ===
+// === 產生 30 天模擬展示資料的輔助函式 ===
 const generateMockData = () => {
   const data = {};
   const baseDate = new Date();
   
-  // 設定最新的持倉狀態目標 (trend: 1 代表近期增持，-1 代表減持)
   const currentStocks = [
     { symbol: "2330", name: "台積電", weight: 31.2, shares: 1450000, trend: 1 },
     { symbol: "2317", name: "鴻海", weight: 5.5, shares: 820000, trend: -1 },
     { symbol: "2454", name: "聯發科", weight: 4.8, shares: 250000, trend: 0 },
-    { symbol: "2308", name: "台達電", weight: 3.2, shares: 150000, trend: 1 }, // 模擬新進榜
+    { symbol: "2308", name: "台達電", weight: 3.2, shares: 150000, trend: 1 }, 
     { symbol: "2382", name: "廣達", weight: 2.8, shares: 320000, trend: 1 },
     { symbol: "2603", name: "長榮", weight: 1.5, shares: 150000, trend: -1 },
-    { symbol: "2881", name: "富邦金", weight: 0, shares: 0, trend: -1 }       // 模擬已剔除
+    { symbol: "2881", name: "富邦金", weight: 0, shares: 0, trend: -1 }       
   ];
 
-  // 為了讓圖表平滑，我們先為每檔股票生成 30 天的連續軌跡 (由新到舊)
   const histories = currentStocks.map(stock => {
     let currentW = stock.weight;
     let currentS = stock.shares;
     const history = [];
     
     for (let i = 0; i < 30; i++) {
-      // 特殊案例處理
       if (stock.symbol === "2308" && i > 15) { 
         history.push({ w: 0, s: 0 }); 
         continue; 
@@ -42,8 +39,6 @@ const generateMockData = () => {
 
       history.push({ w: currentW, s: currentS });
 
-      // 平滑的 Random Walk (反向推算前一天)
-      // 確保不會產生極端的鋸齒狀
       let wStep = stock.trend * (Math.random() * 0.08 + 0.02) + (Math.random() - 0.5) * 0.06;
       let sStep = stock.trend * (Math.random() * 2000 + 500) + (Math.random() - 0.5) * 1500;
 
@@ -53,7 +48,6 @@ const generateMockData = () => {
     return { symbol: stock.symbol, name: stock.name, history };
   });
 
-  // 轉換為以日期為 Key 的資料結構，並跳過週末
   let daysSubtracted = 0;
   for (let i = 0; i < 30; i++) {
     const d = new Date(baseDate);
@@ -81,11 +75,9 @@ const generateMockData = () => {
   
   return data;
 };
-// ============================================
 
-// 自製輕量級 SVG 折線圖元件
+// === 自製輕量級 SVG 折線圖元件 ===
 const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
-  // 新增：紀錄目前鼠標懸停的資料索引
   const [hoverIndex, setHoverIndex] = useState(null);
 
   if (!data || data.length === 0) return null;
@@ -94,17 +86,15 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
   const maxVal = Math.max(...values);
   const minVal = Math.min(...values);
   
-  // 為了視覺留白，計算 Y 軸的安全範圍
   const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
   const padRatio = 0.15;
-  const paddedMin = Math.max(0, minVal - range * padRatio); // 避免數值穿透底部
+  const paddedMin = Math.max(0, minVal - range * padRatio); 
   const paddedMax = maxVal + range * padRatio;
   const paddedRange = paddedMax - paddedMin === 0 ? 1 : paddedMax - paddedMin;
 
   const getX = (i) => data.length <= 1 ? 50 : (i / (data.length - 1)) * 100;
   const getY = (val) => 100 - ((val - paddedMin) / paddedRange) * 100;
 
-  // 若只有一筆資料則畫一條水平線，否則畫出實際折線
   const pathData = data.length === 1 
     ? `M 0 ${getY(values[0])} L 100 ${getY(values[0])}`
     : data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d[dataKey])}`).join(' ');
@@ -112,7 +102,7 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
   return (
     <div 
       className="bg-slate-900 border border-slate-700/60 p-4 rounded-xl flex flex-col h-full shadow-inner relative group"
-      onMouseLeave={() => setHoverIndex(null)} // 離開圖表時隱藏 Tooltip
+      onMouseLeave={() => setHoverIndex(null)}
     >
       <div className="flex justify-between items-center mb-3">
         <span className="text-sm font-semibold text-slate-300">{title}</span>
@@ -123,14 +113,12 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
       </div>
 
       <div className="relative flex-grow w-full mt-2">
-        {/* 背景格線 */}
         <div className="absolute inset-0 flex flex-col justify-between pointer-events-none border-t border-b border-slate-800/50">
           <div className="w-full h-px bg-slate-800/30"></div>
           <div className="w-full h-px bg-slate-800/30"></div>
           <div className="w-full h-px bg-slate-800/30"></div>
         </div>
 
-        {/* Layer 1: 背景折線與漸層 (允許變形以填滿寬高) */}
         <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
           <defs>
             <linearGradient id={`gradient-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
@@ -155,11 +143,9 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
           />
         </svg>
 
-        {/* Layer 2: 點位與感應區 */}
         <svg className="absolute inset-0 w-full h-full overflow-visible">
           {data.map((d, i) => (
             <g key={i} onMouseEnter={() => setHoverIndex(i)}>
-              {/* 隱形的滑鼠感應區 (直條狀，增加 Hover 容錯率) */}
               <rect
                 x={`${Math.max(0, getX(i) - 2)}%`}
                 y="0"
@@ -168,7 +154,6 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
                 fill="transparent"
                 className="cursor-pointer"
               />
-              {/* 實體圓點 */}
               <circle
                 cx={`${getX(i)}%`}
                 cy={`${getY(d[dataKey])}%`}
@@ -182,14 +167,12 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
           ))}
         </svg>
 
-        {/* Layer 3: 自訂動態 Tooltip (懸浮提示框) */}
         {hoverIndex !== null && (
           <div
             className="absolute z-50 bg-slate-800 text-white text-xs py-1.5 px-2.5 rounded-lg shadow-xl border border-slate-600 pointer-events-none transition-all duration-75 ease-out flex flex-col gap-1 whitespace-nowrap"
             style={{
               left: `${getX(hoverIndex)}%`,
               top: `calc(${getY(data[hoverIndex][dataKey])}% - 12px)`,
-              // 避免 Tooltip 超出左右邊界
               transform: `translate(${getX(hoverIndex) > 85 ? '-100%' : getX(hoverIndex) < 15 ? '0%' : '-50%'}, -100%)`,
               marginLeft: getX(hoverIndex) > 85 ? '-8px' : getX(hoverIndex) < 15 ? '8px' : '0px'
             }}
@@ -203,7 +186,6 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
         )}
       </div>
 
-      {/* X軸日期標籤 */}
       <div className="flex justify-between text-[10px] text-slate-500 mt-4">
         <span>{data[0]?.date}</span>
         <span>{data[data.length - 1]?.date}</span>
@@ -220,9 +202,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState('weight-desc');
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isMockData, setIsMockData] = useState(false); // 新增：是否使用展示用模擬資料
-  
-  // 新增狀態：儲存目前選中的股票以顯示圖表
+  const [isMockData, setIsMockData] = useState(false); 
   const [selectedStock, setSelectedStock] = useState(null); 
 
   useEffect(() => {
@@ -232,15 +212,10 @@ export default function App() {
         const dataPath = `data.json?${cacheBuster}`;
         
         const res = await fetch(dataPath);
-        if (!res.ok) {
-          throw new Error(`無法讀取 data.json (HTTP ${res.status})。請確認檔案是否存在。`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         
         const data = await res.json();
-        
-        if (!data || Object.keys(data).length === 0) {
-          throw new Error('data.json 內容為空，尚未包含任何持股紀錄。');
-        }
+        if (!data || Object.keys(data).length === 0) throw new Error('Empty Data');
         
         setHistoricalData(data);
         const availableDates = Object.keys(data).sort((a, b) => new Date(b) - new Date(a));
@@ -252,9 +227,7 @@ export default function App() {
         }
         setIsMockData(false);
       } catch (err) {
-        console.warn('[Data Fetch Error]: 讀取真實資料失敗，切換至預設展示資料', err);
-        
-        // 發生錯誤時，改為載入預設模擬資料
+        console.warn('使用模擬資料');
         const mockData = generateMockData();
         setHistoricalData(mockData);
         const availableDates = Object.keys(mockData).sort((a, b) => new Date(b) - new Date(a));
@@ -263,14 +236,11 @@ export default function App() {
           setEndDate(availableDates[0]); 
           setStartDate(availableDates.length > 1 ? availableDates[1] : availableDates[0]); 
         }
-        
         setIsMockData(true);
-        setErrorMsg(''); // 清除阻擋性的錯誤畫面
       } finally {
         setIsLoading(false);
       }
     };
-
     fetchHoldings();
   }, []);
 
@@ -329,34 +299,37 @@ export default function App() {
     return results;
   }, [historicalData, startDate, endDate, sortBy]);
 
+  // 💡 修正點 1：統計數字嚴格使用「張數 (sharesDiff)」來計算主動增減持
   const stats = useMemo(() => {
-    const increased = holdingsDiff.filter(d => d.diff > 0).length;
-    const decreased = holdingsDiff.filter(d => d.diff < 0).length;
+    const increased = holdingsDiff.filter(d => d.sharesDiff > 0).length;
+    const decreased = holdingsDiff.filter(d => d.sharesDiff < 0).length;
     return { increased, decreased };
   }, [holdingsDiff]);
 
-  // 取出選定成分股的近 30 天歷史資料來繪製圖表
   const trendData = useMemo(() => {
     if (!selectedStock || dates.length === 0) return null;
-    
-    // 取出最近 30 天，並反轉順序 (變成舊到新，符合繪圖由左至右的邏輯)
     const recentDates = dates.slice(0, 30).reverse();
     
     return recentDates.map(date => {
       const dayData = historicalData[date] || [];
       const stockInfo = dayData.find(s => s.symbol === selectedStock.symbol) || { weight: 0, shares: 0 };
       return {
-        date: date.substring(5), // 僅顯示 MM-DD
+        date: date.substring(5), 
         weight: stockInfo.weight || 0,
         shares: stockInfo.shares || 0
       };
     });
   }, [selectedStock, dates, historicalData]);
 
-  const getCardStyle = (diff) => {
-    if (diff === 0) return { bg: 'bg-slate-800', border: 'border-slate-700' };
-    const intensity = Math.min(Math.abs(diff) / 2.0, 0.5); 
-    if (diff > 0) {
+  // 💡 修正點 2：卡片顏色改為依據「張數異動 (sharesDiff)」來判斷紅綠燈
+  // 如果張數沒變 (經理人沒買賣)，但權重變了，會維持中性的深灰色
+  const getCardStyle = (sharesDiff, weightDiff) => {
+    if (sharesDiff === 0) return { bg: 'bg-slate-800', border: 'border-slate-700', style: {} };
+    
+    // 顏色的深淺可以繼續用 weightDiff，因為這代表該動作對 ETF 總佔比的影響程度
+    const intensity = Math.max(0.1, Math.min(Math.abs(weightDiff) / 2.0, 0.4)); 
+    
+    if (sharesDiff > 0) {
       return { bg: 'bg-red-900/40', border: 'border-red-900/60', style: { backgroundColor: `rgba(239, 68, 68, ${intensity})` } };
     } else {
       return { bg: 'bg-green-900/40', border: 'border-green-900/60', style: { backgroundColor: `rgba(34, 197, 94, ${intensity})` } };
@@ -377,36 +350,10 @@ export default function App() {
     );
   }
 
-  if (dates.length === 0 || errorMsg) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-200 p-8 flex items-center justify-center">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center shadow-2xl">
-          <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertCircle size={32} />
-          </div>
-          <h2 className="text-xl font-bold mb-2 text-white">讀取資料異常</h2>
-          <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-            系統無法讀取到有效的資料檔案。請確認資料是否存在或網路連線正常。
-          </p>
-          <div className="bg-black/30 p-4 rounded-lg text-left mb-6 font-mono text-xs text-red-400 overflow-x-auto">
-            錯誤詳情: {errorMsg || 'No Data Found'}
-          </div>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-          >
-            重新整理
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8">
       <header className="mb-6 border-b border-slate-800 pb-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* 左側標題 */}
           <div>
             <h1 className="text-3xl font-bold text-white tracking-wider flex items-center gap-3">
               00981A <span className="text-blue-400">戰情面板</span>
@@ -414,9 +361,7 @@ export default function App() {
             <p className="text-slate-400 mt-2 text-sm">主動統一台股增長 ETF - 主要持股與張數變化監測</p>
           </div>
           
-          {/* 右側日期選擇器與狀態提示 */}
           <div className="flex flex-col items-end gap-2 mt-4 md:mt-0">
-            {/* 簡化版日期選擇膠囊 */}
             <div className="flex items-center gap-2 sm:gap-4 bg-slate-900/80 px-3 sm:px-4 py-2 rounded-lg border border-slate-700/50 shadow-sm">
               <div className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors">
                 <Calendar size={16} className="text-slate-500" />
@@ -445,7 +390,6 @@ export default function App() {
               </div>
             </div>
             
-            {/* 警告標語 (縮小並靠右排列，避免破壞排版) */}
             <div className="flex flex-wrap justify-end gap-2">
               {isDateReversed && (
                   <div className="flex items-center gap-1.5 text-yellow-500 text-[11px] bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/20">
@@ -470,7 +414,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* 選中成分股的趨勢圖面板 (位於 Header 下方) */}
       {selectedStock && trendData && (
         <div className="mb-8 bg-slate-800/40 border border-blue-900/50 rounded-2xl p-5 shadow-2xl backdrop-blur-sm animate-in slide-in-from-top-4 fade-in duration-300 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
@@ -497,15 +440,15 @@ export default function App() {
               data={trendData} 
               dataKey="weight" 
               title="持股權重趨勢" 
-              strokeColor="#ef4444" // 紅色系
+              strokeColor="#ef4444" 
               formatFn={(v) => v.toFixed(2) + '%'} 
             />
             <TrendChart 
               data={trendData} 
               dataKey="shares" 
               title="持有張數趨勢" 
-              strokeColor="#3b82f6" // 藍色系
-              formatFn={(v) => Math.round(v / 1000).toLocaleString() + ' 張'} // 假設原始資料是股數，除以1000變張
+              strokeColor="#3b82f6" 
+              formatFn={(v) => Math.round(v / 1000).toLocaleString() + ' 張'} 
             />
           </div>
         </div>
@@ -543,7 +486,8 @@ export default function App() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         {holdingsDiff.map((stock) => {
-          const style = getCardStyle(stock.diff);
+          // 修改傳入參數：使用 sharesDiff 判斷買賣，diff 判斷強度
+          const style = getCardStyle(stock.sharesDiff, stock.diff);
           const isRemoved = stock.startWeight > 0 && stock.endWeight === 0;
           const isNew = stock.startWeight === 0 && stock.endWeight > 0;
           const isSelected = selectedStock?.symbol === stock.symbol;
@@ -554,7 +498,7 @@ export default function App() {
               onClick={() => {
                 setSelectedStock(isSelected ? null : { symbol: stock.symbol, name: stock.name });
                 if (!isSelected) {
-                  window.scrollTo({ top: 0, behavior: 'smooth' }); // 選中時平滑滾動到上方看圖表
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
                 }
               }}
               className={`relative overflow-hidden rounded-xl border p-4 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${style.bg} ${style.border} ${isRemoved ? 'opacity-75 grayscale-[30%]' : ''} ${isSelected ? 'ring-2 ring-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'hover:shadow-lg hover:shadow-black/50'}`}
@@ -577,9 +521,10 @@ export default function App() {
                   <span className="text-xs text-slate-400 block font-mono mt-0.5">{stock.symbol}</span>
                 </div>
                 <div className="p-1.5 rounded bg-black/30 backdrop-blur-sm">
-                  {stock.diff > 0 ? (
+                  {/* 💡 修正點 3：卡片右上角圖示由張數增減 (sharesDiff) 決定 */}
+                  {stock.sharesDiff > 0 ? (
                     <TrendingUp size={18} className="text-red-400" />
-                  ) : stock.diff < 0 ? (
+                  ) : stock.sharesDiff < 0 ? (
                     <TrendingDown size={18} className="text-green-400" />
                   ) : (
                     <Minus size={18} className="text-slate-500" />
