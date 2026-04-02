@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info } from 'lucide-react';
 
 export default function App() {
   const [historicalData, setHistoricalData] = useState({});
@@ -11,40 +11,40 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    // 使用簡單的相對路徑並加入時間戳記防止快取
-    // 避免在某些環境下使用 new URL(..., window.location.href) 導致的 Invalid URL 錯誤
-    const cacheBuster = `t=${Date.now()}`;
-    const dataPath = `data.json?${cacheBuster}`;
-
-    fetch(dataPath)
-      .then(res => {
+    const fetchHoldings = async () => {
+      try {
+        const cacheBuster = `t=${Date.now()}`;
+        const dataPath = `data.json?${cacheBuster}`;
+        
+        const res = await fetch(dataPath);
         if (!res.ok) {
-          throw new Error(`無法讀取 data.json (HTTP ${res.status})。請確認 public/data.json 是否存在並已執行爬蟲腳本。`);
+          throw new Error(`無法讀取 data.json (HTTP ${res.status})。請確認檔案是否存在。`);
         }
-        return res.json();
-      })
-      .then(data => {
+        
+        const data = await res.json();
+        
         if (!data || Object.keys(data).length === 0) {
           throw new Error('data.json 內容為空，尚未包含任何持股紀錄。');
         }
         
         setHistoricalData(data);
+        // 確保日期排序為最新到最舊
         const availableDates = Object.keys(data).sort((a, b) => new Date(b) - new Date(a));
         setDates(availableDates);
         
         if (availableDates.length > 0) {
-          setEndDate(availableDates[0]);
-          setStartDate(availableDates.length > 1 ? availableDates[1] : availableDates[0]);
+          setEndDate(availableDates[0]); // 最新日期作為比較目標
+          setStartDate(availableDates.length > 1 ? availableDates[1] : availableDates[0]); // 次新日期作為基準
         }
-      })
-      .catch(err => {
-        console.error('[Data Fetch Error]:', err.message);
-        // 確保錯誤訊息是字串
-        setErrorMsg(String(err.message));
-      })
-      .finally(() => {
+      } catch (err) {
+        console.error('[Data Fetch Error]:', err);
+        setErrorMsg(err.message || '發生未知錯誤');
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    fetchHoldings();
   }, []);
 
   const holdingsDiff = useMemo(() => {
@@ -54,6 +54,7 @@ export default function App() {
     const endData = historicalData[endDate] || [];
     const map = new Map();
 
+    // 處理基準日資料
     startData.forEach(item => {
       map.set(item.symbol, {
         symbol: item.symbol,
@@ -67,11 +68,13 @@ export default function App() {
       });
     });
 
+    // 處理目標日資料比對
     endData.forEach(item => {
       if (map.has(item.symbol)) {
         const existing = map.get(item.symbol);
         existing.endWeight = item.weight || 0;
-        existing.diff = Number(((item.weight || 0) - existing.startWeight).toFixed(2));
+        // 避免浮點數精準度問題，先乘 100 取整再除 100
+        existing.diff = Math.round(((item.weight || 0) - existing.startWeight) * 100) / 100;
         existing.endShares = item.shares || 0;
         existing.sharesDiff = (item.shares || 0) - existing.startShares;
       } else {
@@ -90,6 +93,7 @@ export default function App() {
 
     let results = Array.from(map.values());
 
+    // 排序邏輯
     results.sort((a, b) => {
       if (sortBy === 'weight-desc') return b.endWeight - a.endWeight;
       if (sortBy === 'diff-desc') return b.diff - a.diff;
@@ -118,35 +122,40 @@ export default function App() {
     }
   };
 
+  // 判斷日期是否反轉 (基準日比目標日晚)
+  const isDateReversed = useMemo(() => {
+    if (!startDate || !endDate) return false;
+    return new Date(startDate) > new Date(endDate);
+  }, [startDate, endDate]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-4">
         <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-        <p className="animate-pulse">正在載入戰情資料...</p>
+        <p className="animate-pulse tracking-widest text-sm">正在載入戰情資料...</p>
       </div>
     );
   }
 
-  // 無資料時的空狀態顯示
-  if (dates.length === 0) {
+  if (dates.length === 0 || errorMsg) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-200 p-8 flex items-center justify-center">
         <div className="max-w-md w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center shadow-2xl">
           <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle size={32} />
           </div>
-          <h2 className="text-xl font-bold mb-2 text-white">未發現持股資料</h2>
+          <h2 className="text-xl font-bold mb-2 text-white">讀取資料異常</h2>
           <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-            系統無法讀取到有效的資料檔案。這可能是因為爬蟲尚未執行，或資料存檔路徑不正確。
+            系統無法讀取到有效的資料檔案。請確認資料是否存在或網路連線正常。
           </p>
           <div className="bg-black/30 p-4 rounded-lg text-left mb-6 font-mono text-xs text-red-400 overflow-x-auto">
-            錯誤詳情: {String(errorMsg || 'Unknown Error')}
+            錯誤詳情: {errorMsg || 'No Data Found'}
           </div>
           <button 
             onClick={() => window.location.reload()}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg transition-colors"
           >
-            重新整理網頁
+            重新整理
           </button>
         </div>
       </div>
@@ -156,7 +165,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8">
       <header className="mb-6 border-b border-slate-800 pb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
           <div>
             <h1 className="text-3xl font-bold text-white tracking-wider flex items-center gap-3">
               00981A <span className="text-blue-400">戰情面板</span>
@@ -164,52 +173,78 @@ export default function App() {
             <p className="text-slate-400 mt-2 text-sm">主動統一台股增長 ETF - 主要持股與張數變化監測</p>
           </div>
           
-          <div className="flex flex-col sm:flex-row gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
-            <div className="flex items-center gap-2">
-              <Calendar size={18} className="text-slate-400" />
-              <select 
-                className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              >
-                {dates.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+          <div className="flex flex-col space-y-2">
+            <div className="flex flex-col sm:flex-row gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+              {/* 基準日選擇 */}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium ml-1">比較基準 (舊)</span>
+                <div className="flex items-center gap-2">
+                  <Calendar size={18} className="text-slate-400" />
+                  <select 
+                    className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  >
+                    {dates.map(d => <option key={`start-${d}`} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-center text-slate-600 pt-5 hidden sm:flex">
+                <ArrowRightLeft size={16} />
+              </div>
+
+              {/* 目標日選擇 */}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-blue-400/70 font-medium ml-1">比較目標 (新)</span>
+                <div className="flex items-center gap-2">
+                  <Calendar size={18} className="text-slate-400" />
+                  <select 
+                    className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  >
+                    {dates.map(d => <option key={`end-${d}`} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
             
-            <div className="flex items-center justify-center text-slate-500">
-              <ArrowRightLeft size={16} />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Calendar size={18} className="text-slate-400" />
-              <select 
-                className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              >
-                {dates.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
+            {/* 警告提示區塊 */}
+            {isDateReversed && (
+              <div className="flex items-center gap-2 text-yellow-500 text-xs bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
+                <AlertCircle size={14} />
+                <span>注意：基準日晚於目標日，增減數值為反向顯示。</span>
+              </div>
+            )}
+            {dates.length === 1 && (
+              <div className="flex items-center gap-2 text-blue-400 text-xs bg-blue-500/10 p-2 rounded border border-blue-500/20">
+                <Info size={14} />
+                <span>目前僅有一日資料，暫無增減變化可供比較。</span>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div className="flex gap-4 text-sm">
-          <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-lg">
-            <span className="text-slate-400 mr-2">增持</span>
-            <span className="text-red-400 font-bold text-lg">{stats.increased}</span> 檔
+          <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-lg flex items-center shadow-sm">
+            <span className="text-slate-400 mr-3">增持</span>
+            <span className="text-red-400 font-bold text-lg">{stats.increased}</span> 
+            <span className="text-slate-500 ml-1 text-xs">檔</span>
           </div>
-          <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-lg">
-            <span className="text-slate-400 mr-2">減持</span>
-            <span className="text-green-400 font-bold text-lg">{stats.decreased}</span> 檔
+          <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-lg flex items-center shadow-sm">
+            <span className="text-slate-400 mr-3">減持</span>
+            <span className="text-green-400 font-bold text-lg">{stats.decreased}</span>
+            <span className="text-slate-500 ml-1 text-xs">檔</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-lg border border-slate-800">
+        <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-lg border border-slate-800 shadow-sm">
           <Filter size={16} className="text-slate-400 ml-2" />
           <select 
-            className="bg-transparent border-none text-sm text-slate-200 focus:outline-none px-2 py-1"
+            className="bg-transparent border-none text-sm text-slate-200 focus:outline-none px-2 py-1 cursor-pointer"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
           >
@@ -225,19 +260,33 @@ export default function App() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         {holdingsDiff.map((stock) => {
           const style = getCardStyle(stock.diff);
+          const isRemoved = stock.startWeight > 0 && stock.endWeight === 0;
+          const isNew = stock.startWeight === 0 && stock.endWeight > 0;
           
           return (
             <div 
               key={stock.symbol} 
-              className={`relative overflow-hidden rounded-xl border p-4 transition-all duration-300 hover:scale-[1.02] ${style.bg} ${style.border}`}
+              className={`relative overflow-hidden rounded-xl border p-4 transition-all duration-300 hover:shadow-lg hover:shadow-black/50 hover:-translate-y-1 ${style.bg} ${style.border} ${isRemoved ? 'opacity-75 grayscale-[30%]' : ''}`}
               style={style.style}
             >
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="text-lg font-bold text-white">{stock.name}</h3>
-                  <span className="text-xs text-slate-400 block">{stock.symbol}</span>
+              {/* 狀態標籤 (新進 / 剔除) */}
+              {isNew && (
+                <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-bl-lg shadow-sm z-10">
+                  新進榜
                 </div>
-                <div className="p-1.5 rounded bg-black/20">
+              )}
+              {isRemoved && (
+                <div className="absolute top-0 left-0 w-full bg-slate-800/90 border-b border-slate-700 text-slate-300 text-[10px] font-bold text-center py-1 z-10 backdrop-blur-sm">
+                  已剔除 / 跌出榜外
+                </div>
+              )}
+
+              <div className={`flex justify-between items-start mb-3 ${isRemoved ? 'mt-4' : ''}`}>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-wide">{stock.name}</h3>
+                  <span className="text-xs text-slate-400 block font-mono mt-0.5">{stock.symbol}</span>
+                </div>
+                <div className="p-1.5 rounded bg-black/30 backdrop-blur-sm">
                   {stock.diff > 0 ? (
                     <TrendingUp size={18} className="text-red-400" />
                   ) : stock.diff < 0 ? (
@@ -262,38 +311,28 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-700/50">
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700/50">
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-400">最新張數</span>
+                  <span className="text-[10px] text-slate-400 mb-0.5">最新張數</span>
                   <span className="text-xs text-slate-300 font-medium">
-                    {stock.endShares ? Math.round(stock.endShares / 1000).toLocaleString() : '--'} 張
+                    {stock.endShares ? Math.round(stock.endShares / 1000).toLocaleString() : '--'} <span className="text-[10px] text-slate-500">張</span>
                   </span>
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className="text-[10px] text-slate-400">張數異動</span>
+                  <span className="text-[10px] text-slate-400 mb-0.5">張數異動</span>
                   <span className={`text-xs font-bold ${stock.sharesDiff > 0 ? 'text-red-400' : stock.sharesDiff < 0 ? 'text-green-400' : 'text-slate-500'}`}>
-                    {stock.sharesDiff > 0 ? '+' : ''}{stock.sharesDiff ? Math.round(stock.sharesDiff / 1000).toLocaleString() : '--'} 張
+                    {stock.sharesDiff > 0 ? '+' : ''}{stock.sharesDiff ? Math.round(stock.sharesDiff / 1000).toLocaleString() : '--'} <span className="text-[10px] opacity-70">張</span>
                   </span>
                 </div>
               </div>
-              
-              {stock.startWeight === 0 && stock.endWeight > 0 && (
-                <div className="absolute bottom-0 right-0 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-tl-lg">
-                  新進榜
-                </div>
-              )}
-              {stock.startWeight > 0 && stock.endWeight === 0 && (
-                <div className="absolute top-0 right-0 bg-green-600/80 text-white text-[10px] font-bold w-full text-center py-0.5">
-                  已剔除 / 跌出榜外
-                </div>
-              )}
             </div>
           );
         })}
       </div>
       
-      <footer className="mt-12 text-center text-xs text-slate-600 pb-8">
-        數據由自動化腳本每日同步。基準日：{endDate || '讀取中...'}
+      <footer className="mt-12 text-center text-xs text-slate-500 pb-8 flex items-center justify-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+        數據由自動化腳本每日同步。資料基準日：<span className="font-mono">{endDate || '讀取中...'}</span>
       </footer>
     </div>
   );
