@@ -204,6 +204,9 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isMockData, setIsMockData] = useState(false); 
   const [selectedStock, setSelectedStock] = useState(null); 
+  
+  // 💡 新增：控制是否僅顯示有張數異動的成分股
+  const [showOnlyChangedShares, setShowOnlyChangedShares] = useState(false);
 
   useEffect(() => {
     const fetchHoldings = async () => {
@@ -299,12 +302,18 @@ export default function App() {
     return results;
   }, [historicalData, startDate, endDate, sortBy]);
 
-  // 💡 修正點 1：統計數字嚴格使用「張數 (sharesDiff)」來計算主動增減持
+  // 💡 統計數字維持不動，顯示全局的異動狀態
   const stats = useMemo(() => {
     const increased = holdingsDiff.filter(d => d.sharesDiff > 0).length;
     const decreased = holdingsDiff.filter(d => d.sharesDiff < 0).length;
     return { increased, decreased };
   }, [holdingsDiff]);
+
+  // 💡 取得真正要顯示在畫面上的資料（根據打勾狀態進行過濾）
+  const displayedHoldings = useMemo(() => {
+    if (!showOnlyChangedShares) return holdingsDiff;
+    return holdingsDiff.filter(stock => stock.sharesDiff !== 0);
+  }, [holdingsDiff, showOnlyChangedShares]);
 
   const trendData = useMemo(() => {
     if (!selectedStock || dates.length === 0) return null;
@@ -321,12 +330,9 @@ export default function App() {
     });
   }, [selectedStock, dates, historicalData]);
 
-  // 💡 修正點 2：卡片顏色改為依據「張數異動 (sharesDiff)」來判斷紅綠燈
-  // 如果張數沒變 (經理人沒買賣)，但權重變了，會維持中性的深灰色
   const getCardStyle = (sharesDiff, weightDiff) => {
     if (sharesDiff === 0) return { bg: 'bg-slate-800', border: 'border-slate-700', style: {} };
     
-    // 顏色的深淺可以繼續用 weightDiff，因為這代表該動作對 ETF 總佔比的影響程度
     const intensity = Math.max(0.1, Math.min(Math.abs(weightDiff) / 2.0, 0.4)); 
     
     if (sharesDiff > 0) {
@@ -468,25 +474,39 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-lg border border-slate-800 shadow-sm">
-          <Filter size={16} className="text-slate-400 ml-2" />
-          <select 
-            className="bg-transparent border-none text-sm text-slate-200 focus:outline-none px-2 py-1 cursor-pointer"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            <option value="weight-desc">按最新權重 (高至低)</option>
-            <option value="diff-desc">按權重增持 (大至小)</option>
-            <option value="diff-asc">按權重減持 (大至小)</option>
-            <option value="shares-desc">按加碼張數 (多至少)</option>
-            <option value="shares-asc">按倒貨張數 (多至少)</option>
-          </select>
+        {/* 💡 包含打勾選框與排序選單的區域 */}
+        <div className="flex items-center flex-wrap gap-3">
+          
+          <label className="flex items-center gap-2 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-sm text-sm text-slate-300 hover:text-white transition-colors">
+            <input 
+              type="checkbox" 
+              checked={showOnlyChangedShares}
+              onChange={(e) => setShowOnlyChangedShares(e.target.checked)}
+              className="w-4 h-4 accent-blue-500 cursor-pointer bg-slate-800 border-slate-700 rounded"
+            />
+            <span className="select-none pt-px">僅顯示張數異動</span>
+          </label>
+
+          <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-lg border border-slate-800 shadow-sm">
+            <Filter size={16} className="text-slate-400 ml-2" />
+            <select 
+              className="bg-transparent border-none text-sm text-slate-200 focus:outline-none px-2 py-1 cursor-pointer"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <option value="weight-desc">按最新權重 (高至低)</option>
+              <option value="diff-desc">按權重增持 (大至小)</option>
+              <option value="diff-asc">按權重減持 (大至小)</option>
+              <option value="shares-desc">按加碼張數 (多至少)</option>
+              <option value="shares-asc">按倒貨張數 (多至少)</option>
+            </select>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-        {holdingsDiff.map((stock) => {
-          // 修改傳入參數：使用 sharesDiff 判斷買賣，diff 判斷強度
+        {/* 💡 這裡改用 displayedHoldings 而不是 holdingsDiff */}
+        {displayedHoldings.map((stock) => {
           const style = getCardStyle(stock.sharesDiff, stock.diff);
           const isRemoved = stock.startWeight > 0 && stock.endWeight === 0;
           const isNew = stock.startWeight === 0 && stock.endWeight > 0;
@@ -521,7 +541,6 @@ export default function App() {
                   <span className="text-xs text-slate-400 block font-mono mt-0.5">{stock.symbol}</span>
                 </div>
                 <div className="p-1.5 rounded bg-black/30 backdrop-blur-sm">
-                  {/* 💡 修正點 3：卡片右上角圖示由張數增減 (sharesDiff) 決定 */}
                   {stock.sharesDiff > 0 ? (
                     <TrendingUp size={18} className="text-red-400" />
                   ) : stock.sharesDiff < 0 ? (
@@ -565,6 +584,12 @@ export default function App() {
         })}
       </div>
       
+      {displayedHoldings.length === 0 && (
+        <div className="text-center py-16 text-slate-500">
+          <p>這個區間沒有張數發生異動的成分股。</p>
+        </div>
+      )}
+
       <footer className="mt-12 text-center text-xs text-slate-500 pb-8 flex items-center justify-center gap-2">
         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
         數據由自動化腳本每日同步。資料基準日：<span className="font-mono">{endDate || '讀取中...'}</span>
