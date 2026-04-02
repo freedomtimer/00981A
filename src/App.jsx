@@ -218,7 +218,7 @@ export default function App() {
     direction: null 
   });
 
-  // 💡 新增：儲存各成分股的即時報價狀態
+  // 儲存各成分股的即時報價狀態
   const [stockQuotes, setStockQuotes] = useState({});
 
   const fugleToken = "NjFkNTkzMDQtZTI3Zi00ZjIzLTk1YjItZjg2ZDRhMTQ0ZDNhIDc4Y2VkYzhlLTAzYzAtNDI2NC1hM2Y5LWE4MWVjMWNiMTIyZg==";
@@ -323,13 +323,12 @@ export default function App() {
     return holdingsDiff.filter(stock => stock.sharesDiff !== 0);
   }, [holdingsDiff, showOnlyChangedShares]);
 
-  // 💡 新增：背景輪詢各成分股即時報價 (每 30 秒)
+  // 背景輪詢各成分股即時報價 (每 30 秒)
   useEffect(() => {
     let intervalId;
     let isMounted = true;
 
     const fetchComponentQuotes = async () => {
-      // 為了節省 API 額度，只抓目前畫面上顯示的成分股
       if (!displayedHoldings || displayedHoldings.length === 0) return;
       const symbols = displayedHoldings.map(h => h.symbol);
 
@@ -342,7 +341,7 @@ export default function App() {
           
           if (res.status === 429) {
             console.warn("Fugle API 限流 (429)，暫停本次更新");
-            break; // 遇到限流直接跳出迴圈，等待下個 30 秒週期
+            break; 
           }
 
           if (res.ok) {
@@ -361,17 +360,15 @@ export default function App() {
             }
           }
         } catch (e) {
-          // 忽略單一股票的網路錯誤，繼續跑下一檔
+          // 忽略單一股票的網路錯誤
         }
-        // 延遲 150ms 避免瞬間請求過多被封鎖
         await new Promise(resolve => setTimeout(resolve, 150));
       }
     };
 
-    // 等待初始頁面載入後，延遲 1.5 秒啟動第一次抓取
     const timeoutId = setTimeout(() => {
       fetchComponentQuotes();
-      intervalId = setInterval(fetchComponentQuotes, 30000); // 設定每 30 秒更新一次
+      intervalId = setInterval(fetchComponentQuotes, 30000); 
     }, 1500);
 
     return () => {
@@ -379,7 +376,7 @@ export default function App() {
       clearTimeout(timeoutId);
       clearInterval(intervalId);
     };
-  }, [displayedHoldings]); // 當顯示的列表改變時重新建立計時器
+  }, [displayedHoldings]);
 
   // Fugle API 與 WebSocket 連線處理 (00981A 主標題)
   useEffect(() => {
@@ -567,7 +564,7 @@ export default function App() {
     return new Date(startDate) > new Date(endDate);
   }, [startDate, endDate]);
 
-  // 💡 格式化市值的輔助函式 (自動轉 億/萬)
+  // 格式化市值的輔助函式 (自動轉 億/萬)
   const formatMarketValue = (val) => {
     if (val >= 100000000) return (val / 100000000).toFixed(2) + ' 億';
     if (val >= 10000) return Math.round(val / 10000).toLocaleString() + ' 萬';
@@ -798,7 +795,6 @@ export default function App() {
           const isNew = stock.startWeight === 0 && stock.endWeight > 0;
           const isSelected = selectedStock?.symbol === stock.symbol;
           
-          // 💡 取得本檔股票的即時報價與市值
           const quote = stockQuotes[stock.symbol];
           const marketValue = quote && stock.endShares ? quote.price * stock.endShares : null;
           
@@ -829,7 +825,6 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-white tracking-wide">{stock.name}</h3>
-                    {/* 💡 股票名稱旁顯示即時價格 */}
                     {quote && (
                       <span className={`text-sm font-bold font-mono ${quote.change > 0 ? 'text-red-400' : quote.change < 0 ? 'text-green-400' : 'text-slate-300'}`}>
                         {quote.price.toFixed(1)}
@@ -838,7 +833,6 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-slate-400 block font-mono">{stock.symbol}</span>
-                    {/* 💡 代碼旁顯示漲跌幅 */}
                     {quote && (
                       <span className={`text-[10px] ${quote.change > 0 ? 'text-red-400' : quote.change < 0 ? 'text-green-400' : 'text-slate-500'}`}>
                         {quote.change > 0 ? '▲' : quote.change < 0 ? '▼' : ''}{Math.abs(quote.changePercent).toFixed(1)}%
@@ -857,15 +851,16 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="mt-2 flex-grow">
+              {/* 💡 更新：將權重與變化收攏在同一水平列，節省垂直空間 */}
+              <div className="mt-2 flex-grow flex items-end justify-between">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-black text-white">{stock.endWeight > 0 ? stock.endWeight.toFixed(2) : '0.00'}</span>
-                  <span className="text-sm text-slate-400">%</span>
+                  <span className="text-2xl font-black text-white leading-none">{stock.endWeight > 0 ? stock.endWeight.toFixed(2) : '0.00'}</span>
+                  <span className="text-sm text-slate-400 font-medium mb-0.5">%</span>
                 </div>
                 
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-slate-400">權重變化</span>
-                  <span className={`text-sm font-bold ${stock.diff > 0 ? 'text-red-400' : stock.diff < 0 ? 'text-green-400' : 'text-slate-500'}`}>
+                <div className="flex items-center gap-1 mb-0.5">
+                  <span className="text-[10px] text-slate-500">權重</span>
+                  <span className={`text-sm font-bold tracking-tight ${stock.diff > 0 ? 'text-red-400' : stock.diff < 0 ? 'text-green-400' : 'text-slate-500'}`}>
                     {stock.diff > 0 ? '+' : ''}{stock.diff.toFixed(2)}%
                   </span>
                 </div>
@@ -886,7 +881,6 @@ export default function App() {
                 </div>
               </div>
               
-              {/* 💡 新增：卡片最底部的持有市值區塊 */}
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700/50 border-dashed">
                 <span className="text-[10px] text-slate-400">持有市值 (估)</span>
                 <span className="text-[11px] font-mono text-sky-200/90 font-medium tracking-wider">
