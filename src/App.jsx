@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio } from 'lucide-react';
 
 // === 產生 30 天模擬展示資料的輔助函式 ===
 const generateMockData = () => {
@@ -204,10 +204,173 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isMockData, setIsMockData] = useState(false); 
   const [selectedStock, setSelectedStock] = useState(null); 
-  
-  // 💡 新增：控制是否僅顯示有張數異動的成分股
   const [showOnlyChangedShares, setShowOnlyChangedShares] = useState(false);
 
+  // 💡 更新：即時報價狀態新增 referencePrice, change, changePercent
+  const [realtimeQuote, setRealtimeQuote] = useState({
+    price: null,
+    referencePrice: null,
+    change: null,
+    changePercent: null,
+    volume: null,
+    time: null,
+    connected: false,
+    direction: null 
+  });
+
+  // Fugle API 與 WebSocket 連線處理
+  useEffect(() => {
+    let ws;
+    let reconnectTimer;
+    const fugleToken = "NjFkNTkzMDQtZTI3Zi00ZjIzLTk1YjItZjg2ZDRhMTQ0ZDNhIDc4Y2VkYzhlLTAzYzAtNDI2NC1hM2Y5LWE4MWVjMWNiMTIyZg==";
+
+    const fetchInitialQuote = async () => {
+      try {
+        const res = await fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/00981A', {
+          headers: { 'X-API-KEY': fugleToken }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          const price = data.lastTrade?.price || data.closePrice || data.referencePrice;
+          const refPrice = data.referencePrice; // 昨收價
+          
+          if (price) {
+            const timestamp = data.lastTrade?.time ? (data.lastTrade.time > 1e14 ? data.lastTrade.time / 1000 : data.lastTrade.time) : Date.now();
+            const dateObj = new Date(timestamp);
+            const timeString = isNaN(dateObj) 
+              ? new Date().toLocaleTimeString('zh-TW', { hour12: false }) 
+              : dateObj.toLocaleTimeString('zh-TW', { hour12: false });
+
+            setRealtimeQuote(prev => {
+              const currentPrice = prev.price || price;
+              const currentRefPrice = prev.referencePrice || refPrice;
+              let change = prev.change;
+              let changePercent = prev.changePercent;
+
+              // 💡 計算初始漲跌與漲跌幅
+              if (currentPrice !== null && currentRefPrice) {
+                change = currentPrice - currentRefPrice;
+                changePercent = (change / currentRefPrice) * 100;
+              }
+
+              return {
+                ...prev,
+                price: currentPrice,
+                referencePrice: currentRefPrice,
+                change: change,
+                changePercent: changePercent,
+                time: prev.time || (data.isClosed ? `${timeString} (已收盤)` : timeString)
+              };
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[Fugle REST] 取得初始報價失敗", e);
+      }
+    };
+
+    const connectWS = () => {
+      ws = new WebSocket('wss://api.fugle.tw/marketdata/v1.0/stock/streaming');
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          event: "auth",
+          data: { apikey: fugleToken }
+        }));
+
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              event: "subscribe",
+              data: {
+                channel: "trades", 
+                symbol: "00981A"
+              }
+            }));
+            setRealtimeQuote(prev => ({ ...prev, connected: true }));
+          }
+        }, 500);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          
+          if (msg.event === 'authenticated') {
+            ws.send(JSON.stringify({
+              event: "subscribe",
+              data: {
+                channel: "trades",
+                symbol: "00981A"
+              }
+            }));
+            setRealtimeQuote(prev => ({ ...prev, connected: true }));
+          } 
+          else if (msg.event === 'data' && msg.data) {
+            if (msg.data.price !== undefined) {
+              setRealtimeQuote(prev => {
+                const newPrice = msg.data.price;
+                let direction = prev.direction;
+                
+                // 💡 判斷跳動紅綠 (跟前一筆Tick相比)
+                if (prev.price !== null) {
+                  if (newPrice > prev.price) direction = 'up';
+                  else if (newPrice < prev.price) direction = 'down';
+                }
+
+                // 💡 計算即時漲跌 (跟昨收相比)
+                let change = prev.change;
+                let changePercent = prev.changePercent;
+                if (prev.referencePrice) {
+                  change = newPrice - prev.referencePrice;
+                  changePercent = (change / prev.referencePrice) * 100;
+                }
+
+                const timestamp = msg.data.time > 1e14 ? msg.data.time / 1000 : msg.data.time;
+                const dateObj = new Date(timestamp);
+                const timeString = isNaN(dateObj) 
+                  ? new Date().toLocaleTimeString('zh-TW', { hour12: false }) 
+                  : dateObj.toLocaleTimeString('zh-TW', { hour12: false });
+
+                return {
+                  ...prev,
+                  price: newPrice,
+                  change: change,
+                  changePercent: changePercent,
+                  volume: msg.data.volume || msg.data.size,
+                  time: timeString,
+                  connected: true,
+                  direction: direction
+                };
+              });
+            }
+          }
+        } catch(e) {
+          console.error("[Fugle WS] Parse Error", e);
+        }
+      };
+
+      ws.onclose = () => {
+        setRealtimeQuote(prev => ({ ...prev, connected: false }));
+        reconnectTimer = setTimeout(connectWS, 5000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("[Fugle WS] Connection Error", err);
+        ws.close();
+      };
+    };
+
+    fetchInitialQuote().then(connectWS);
+
+    return () => {
+      if (ws) ws.close();
+      clearTimeout(reconnectTimer);
+    };
+  }, []); 
+
+  // 原始的靜態資料拉取邏輯
   useEffect(() => {
     const fetchHoldings = async () => {
       try {
@@ -302,14 +465,12 @@ export default function App() {
     return results;
   }, [historicalData, startDate, endDate, sortBy]);
 
-  // 💡 統計數字維持不動，顯示全局的異動狀態
   const stats = useMemo(() => {
     const increased = holdingsDiff.filter(d => d.sharesDiff > 0).length;
     const decreased = holdingsDiff.filter(d => d.sharesDiff < 0).length;
     return { increased, decreased };
   }, [holdingsDiff]);
 
-  // 💡 取得真正要顯示在畫面上的資料（根據打勾狀態進行過濾）
   const displayedHoldings = useMemo(() => {
     if (!showOnlyChangedShares) return holdingsDiff;
     return holdingsDiff.filter(stock => stock.sharesDiff !== 0);
@@ -420,6 +581,69 @@ export default function App() {
         </div>
       </header>
 
+      {/* 💡 更新：加入漲跌價與漲跌幅的即時報價面板 */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-800/60 border border-slate-700/80 p-4 sm:px-6 rounded-2xl mb-8 shadow-lg relative overflow-hidden backdrop-blur-sm">
+        <div className={`absolute top-0 left-0 w-1.5 h-full ${realtimeQuote.connected ? 'bg-blue-500' : 'bg-slate-500'}`}></div>
+
+        <div className="flex items-center gap-4 ml-1">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`relative flex items-center justify-center w-3 h-3 ${realtimeQuote.connected ? '' : 'grayscale'}`}>
+                {realtimeQuote.connected && <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping"></span>}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${realtimeQuote.connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              </div>
+              <span className="text-slate-400 font-medium text-sm">Fugle 即時報價</span>
+            </div>
+            
+            <div className="flex flex-wrap items-baseline gap-2 mt-0.5">
+              <h2 className="text-2xl font-bold text-white mr-1">00981A</h2>
+              {realtimeQuote.price ? (
+                <>
+                  <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.direction === 'up' ? 'text-red-400' : realtimeQuote.direction === 'down' ? 'text-green-400' : 'text-white'}`}>
+                    {realtimeQuote.price.toFixed(2)}
+                  </span>
+                  
+                  {realtimeQuote.change !== null && (
+                    <div className={`flex items-center ml-2 font-bold ${realtimeQuote.change > 0 ? 'text-red-400' : realtimeQuote.change < 0 ? 'text-green-400' : 'text-slate-400'}`}>
+                      <span className="text-xl flex items-center gap-0.5">
+                        {realtimeQuote.change > 0 ? '▲' : realtimeQuote.change < 0 ? '▼' : '-'} 
+                        {Math.abs(realtimeQuote.change).toFixed(2)}
+                      </span>
+                      <span className="text-sm bg-black/20 px-1.5 py-0.5 rounded ml-2">
+                        {realtimeQuote.change > 0 ? '+' : ''}{realtimeQuote.changePercent.toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="text-lg text-slate-500 animate-pulse font-normal ml-3">
+                  取得最新價格中...
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 sm:mt-0 flex flex-col items-start sm:items-end text-xs text-slate-500 font-mono">
+          <div className="flex gap-6 sm:gap-4">
+            <span className="flex flex-col">
+              <span className="text-slate-600 mb-0.5">WS 連線狀態</span>
+              {realtimeQuote.connected ? (
+                <span className="text-green-400 font-bold tracking-wider">● CONNECTED</span> 
+              ) : (
+                <span className="text-red-400 font-bold tracking-wider">○ DISCONNECTED</span>
+              )}
+            </span>
+            {realtimeQuote.time && (
+              <span className="flex flex-col items-start sm:items-end">
+                <span className="text-slate-600 mb-0.5">最後更新時間</span>
+                <span className="text-slate-300 tracking-wider">{realtimeQuote.time}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       {selectedStock && trendData && (
         <div className="mb-8 bg-slate-800/40 border border-blue-900/50 rounded-2xl p-5 shadow-2xl backdrop-blur-sm animate-in slide-in-from-top-4 fade-in duration-300 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
@@ -474,9 +698,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* 💡 包含打勾選框與排序選單的區域 */}
         <div className="flex items-center flex-wrap gap-3">
-          
           <label className="flex items-center gap-2 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 shadow-sm text-sm text-slate-300 hover:text-white transition-colors">
             <input 
               type="checkbox" 
@@ -505,7 +727,6 @@ export default function App() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-        {/* 💡 這裡改用 displayedHoldings 而不是 holdingsDiff */}
         {displayedHoldings.map((stock) => {
           const style = getCardStyle(stock.sharesDiff, stock.diff);
           const isRemoved = stock.startWeight > 0 && stock.endWeight === 0;
