@@ -1,5 +1,216 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity } from 'lucide-react';
+
+// === 新增：產生 30 天模擬展示資料的輔助函式 ===
+const generateMockData = () => {
+  const data = {};
+  const baseDate = new Date();
+  
+  // 設定最新的持倉狀態目標 (trend: 1 代表近期增持，-1 代表減持)
+  const currentStocks = [
+    { symbol: "2330", name: "台積電", weight: 31.2, shares: 1450000, trend: 1 },
+    { symbol: "2317", name: "鴻海", weight: 5.5, shares: 820000, trend: -1 },
+    { symbol: "2454", name: "聯發科", weight: 4.8, shares: 250000, trend: 0 },
+    { symbol: "2308", name: "台達電", weight: 3.2, shares: 150000, trend: 1 }, // 模擬新進榜
+    { symbol: "2382", name: "廣達", weight: 2.8, shares: 320000, trend: 1 },
+    { symbol: "2603", name: "長榮", weight: 1.5, shares: 150000, trend: -1 },
+    { symbol: "2881", name: "富邦金", weight: 0, shares: 0, trend: -1 }       // 模擬已剔除
+  ];
+
+  // 為了讓圖表平滑，我們先為每檔股票生成 30 天的連續軌跡 (由新到舊)
+  const histories = currentStocks.map(stock => {
+    let currentW = stock.weight;
+    let currentS = stock.shares;
+    const history = [];
+    
+    for (let i = 0; i < 30; i++) {
+      // 特殊案例處理
+      if (stock.symbol === "2308" && i > 15) { 
+        history.push({ w: 0, s: 0 }); 
+        continue; 
+      }
+      if (stock.symbol === "2881") {
+        if (i === 0) {
+          history.push({ w: 0, s: 0 });
+        } else {
+          currentW = currentW === 0 ? 2.5 : currentW + (Math.random() * 0.1 - 0.02);
+          currentS = currentS === 0 ? 450000 : currentS + (Math.random() * 5000 - 1000);
+          history.push({ w: currentW, s: currentS });
+        }
+        continue;
+      }
+
+      history.push({ w: currentW, s: currentS });
+
+      // 平滑的 Random Walk (反向推算前一天)
+      // 確保不會產生極端的鋸齒狀
+      let wStep = stock.trend * (Math.random() * 0.08 + 0.02) + (Math.random() - 0.5) * 0.06;
+      let sStep = stock.trend * (Math.random() * 2000 + 500) + (Math.random() - 0.5) * 1500;
+
+      currentW = Math.max(0, currentW - wStep);
+      currentS = Math.max(0, currentS - sStep);
+    }
+    return { symbol: stock.symbol, name: stock.name, history };
+  });
+
+  // 轉換為以日期為 Key 的資料結構，並跳過週末
+  let daysSubtracted = 0;
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(baseDate);
+    while (true) {
+      const tempD = new Date(baseDate);
+      tempD.setDate(baseDate.getDate() - daysSubtracted);
+      const day = tempD.getDay();
+      if (day !== 0 && day !== 6) {
+        d.setTime(tempD.getTime());
+        daysSubtracted++;
+        break;
+      }
+      daysSubtracted++;
+    }
+    
+    const dateStr = d.toISOString().split('T')[0];
+    
+    data[dateStr] = histories.map(h => ({
+      symbol: h.symbol,
+      name: h.name,
+      weight: Math.max(0, Number(h.history[i].w.toFixed(2))),
+      shares: Math.max(0, Math.round(h.history[i].s))
+    })).filter(s => s.weight > 0 || (i === 0 && s.symbol === "2881"));
+  }
+  
+  return data;
+};
+// ============================================
+
+// 自製輕量級 SVG 折線圖元件
+const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
+  // 新增：紀錄目前鼠標懸停的資料索引
+  const [hoverIndex, setHoverIndex] = useState(null);
+
+  if (!data || data.length === 0) return null;
+
+  const values = data.map(d => d[dataKey]);
+  const maxVal = Math.max(...values);
+  const minVal = Math.min(...values);
+  
+  // 為了視覺留白，計算 Y 軸的安全範圍
+  const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
+  const padRatio = 0.15;
+  const paddedMin = Math.max(0, minVal - range * padRatio); // 避免數值穿透底部
+  const paddedMax = maxVal + range * padRatio;
+  const paddedRange = paddedMax - paddedMin === 0 ? 1 : paddedMax - paddedMin;
+
+  const getX = (i) => data.length <= 1 ? 50 : (i / (data.length - 1)) * 100;
+  const getY = (val) => 100 - ((val - paddedMin) / paddedRange) * 100;
+
+  // 若只有一筆資料則畫一條水平線，否則畫出實際折線
+  const pathData = data.length === 1 
+    ? `M 0 ${getY(values[0])} L 100 ${getY(values[0])}`
+    : data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d[dataKey])}`).join(' ');
+
+  return (
+    <div 
+      className="bg-slate-900 border border-slate-700/60 p-4 rounded-xl flex flex-col h-full shadow-inner relative group"
+      onMouseLeave={() => setHoverIndex(null)} // 離開圖表時隱藏 Tooltip
+    >
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-sm font-semibold text-slate-300">{title}</span>
+        <div className="flex gap-3 text-xs text-slate-500 font-mono">
+          <span className="flex items-center gap-1"><TrendingDown size={12} className="text-red-400/50"/> 低: {formatFn(minVal)}</span>
+          <span className="flex items-center gap-1"><TrendingUp size={12} className="text-green-400/50"/> 高: {formatFn(maxVal)}</span>
+        </div>
+      </div>
+
+      <div className="relative flex-grow w-full mt-2">
+        {/* 背景格線 */}
+        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none border-t border-b border-slate-800/50">
+          <div className="w-full h-px bg-slate-800/30"></div>
+          <div className="w-full h-px bg-slate-800/30"></div>
+          <div className="w-full h-px bg-slate-800/30"></div>
+        </div>
+
+        {/* Layer 1: 背景折線與漸層 (允許變形以填滿寬高) */}
+        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id={`gradient-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={strokeColor} />
+              <stop offset="100%" stopColor="transparent" />
+            </linearGradient>
+          </defs>
+          <path
+            d={`${pathData} L 100 100 L 0 100 Z`}
+            fill={`url(#gradient-${dataKey})`}
+            opacity="0.15"
+          />
+          <path
+            d={pathData}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+            className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+          />
+        </svg>
+
+        {/* Layer 2: 點位與感應區 */}
+        <svg className="absolute inset-0 w-full h-full overflow-visible">
+          {data.map((d, i) => (
+            <g key={i} onMouseEnter={() => setHoverIndex(i)}>
+              {/* 隱形的滑鼠感應區 (直條狀，增加 Hover 容錯率) */}
+              <rect
+                x={`${Math.max(0, getX(i) - 2)}%`}
+                y="0"
+                width="4%"
+                height="100%"
+                fill="transparent"
+                className="cursor-pointer"
+              />
+              {/* 實體圓點 */}
+              <circle
+                cx={`${getX(i)}%`}
+                cy={`${getY(d[dataKey])}%`}
+                r={hoverIndex === i ? "5" : "3.5"}
+                fill={hoverIndex === i ? strokeColor : "#0f172a"}
+                stroke={strokeColor}
+                strokeWidth="2"
+                className="transition-all duration-200 z-10 relative pointer-events-none"
+              />
+            </g>
+          ))}
+        </svg>
+
+        {/* Layer 3: 自訂動態 Tooltip (懸浮提示框) */}
+        {hoverIndex !== null && (
+          <div
+            className="absolute z-50 bg-slate-800 text-white text-xs py-1.5 px-2.5 rounded-lg shadow-xl border border-slate-600 pointer-events-none transition-all duration-75 ease-out flex flex-col gap-1 whitespace-nowrap"
+            style={{
+              left: `${getX(hoverIndex)}%`,
+              top: `calc(${getY(data[hoverIndex][dataKey])}% - 12px)`,
+              // 避免 Tooltip 超出左右邊界
+              transform: `translate(${getX(hoverIndex) > 85 ? '-100%' : getX(hoverIndex) < 15 ? '0%' : '-50%'}, -100%)`,
+              marginLeft: getX(hoverIndex) > 85 ? '-8px' : getX(hoverIndex) < 15 ? '8px' : '0px'
+            }}
+          >
+            <div className="font-mono text-slate-400 text-[10px]">{data[hoverIndex].date}</div>
+            <div className="font-bold flex items-center gap-1.5 text-sm">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: strokeColor }}></div>
+              {formatFn(data[hoverIndex][dataKey])}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* X軸日期標籤 */}
+      <div className="flex justify-between text-[10px] text-slate-500 mt-4">
+        <span>{data[0]?.date}</span>
+        <span>{data[data.length - 1]?.date}</span>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [historicalData, setHistoricalData] = useState({});
@@ -9,6 +220,10 @@ export default function App() {
   const [sortBy, setSortBy] = useState('weight-desc');
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isMockData, setIsMockData] = useState(false); // 新增：是否使用展示用模擬資料
+  
+  // 新增狀態：儲存目前選中的股票以顯示圖表
+  const [selectedStock, setSelectedStock] = useState(null); 
 
   useEffect(() => {
     const fetchHoldings = async () => {
@@ -28,17 +243,29 @@ export default function App() {
         }
         
         setHistoricalData(data);
-        // 確保日期排序為最新到最舊
         const availableDates = Object.keys(data).sort((a, b) => new Date(b) - new Date(a));
         setDates(availableDates);
         
         if (availableDates.length > 0) {
-          setEndDate(availableDates[0]); // 最新日期作為比較目標
-          setStartDate(availableDates.length > 1 ? availableDates[1] : availableDates[0]); // 次新日期作為基準
+          setEndDate(availableDates[0]); 
+          setStartDate(availableDates.length > 1 ? availableDates[1] : availableDates[0]); 
         }
+        setIsMockData(false);
       } catch (err) {
-        console.error('[Data Fetch Error]:', err);
-        setErrorMsg(err.message || '發生未知錯誤');
+        console.warn('[Data Fetch Error]: 讀取真實資料失敗，切換至預設展示資料', err);
+        
+        // 發生錯誤時，改為載入預設模擬資料
+        const mockData = generateMockData();
+        setHistoricalData(mockData);
+        const availableDates = Object.keys(mockData).sort((a, b) => new Date(b) - new Date(a));
+        setDates(availableDates);
+        if (availableDates.length > 0) {
+          setEndDate(availableDates[0]); 
+          setStartDate(availableDates.length > 1 ? availableDates[1] : availableDates[0]); 
+        }
+        
+        setIsMockData(true);
+        setErrorMsg(''); // 清除阻擋性的錯誤畫面
       } finally {
         setIsLoading(false);
       }
@@ -54,7 +281,6 @@ export default function App() {
     const endData = historicalData[endDate] || [];
     const map = new Map();
 
-    // 處理基準日資料
     startData.forEach(item => {
       map.set(item.symbol, {
         symbol: item.symbol,
@@ -68,12 +294,10 @@ export default function App() {
       });
     });
 
-    // 處理目標日資料比對
     endData.forEach(item => {
       if (map.has(item.symbol)) {
         const existing = map.get(item.symbol);
         existing.endWeight = item.weight || 0;
-        // 避免浮點數精準度問題，先乘 100 取整再除 100
         existing.diff = Math.round(((item.weight || 0) - existing.startWeight) * 100) / 100;
         existing.endShares = item.shares || 0;
         existing.sharesDiff = (item.shares || 0) - existing.startShares;
@@ -93,7 +317,6 @@ export default function App() {
 
     let results = Array.from(map.values());
 
-    // 排序邏輯
     results.sort((a, b) => {
       if (sortBy === 'weight-desc') return b.endWeight - a.endWeight;
       if (sortBy === 'diff-desc') return b.diff - a.diff;
@@ -112,6 +335,24 @@ export default function App() {
     return { increased, decreased };
   }, [holdingsDiff]);
 
+  // 取出選定成分股的近 30 天歷史資料來繪製圖表
+  const trendData = useMemo(() => {
+    if (!selectedStock || dates.length === 0) return null;
+    
+    // 取出最近 30 天，並反轉順序 (變成舊到新，符合繪圖由左至右的邏輯)
+    const recentDates = dates.slice(0, 30).reverse();
+    
+    return recentDates.map(date => {
+      const dayData = historicalData[date] || [];
+      const stockInfo = dayData.find(s => s.symbol === selectedStock.symbol) || { weight: 0, shares: 0 };
+      return {
+        date: date.substring(5), // 僅顯示 MM-DD
+        weight: stockInfo.weight || 0,
+        shares: stockInfo.shares || 0
+      };
+    });
+  }, [selectedStock, dates, historicalData]);
+
   const getCardStyle = (diff) => {
     if (diff === 0) return { bg: 'bg-slate-800', border: 'border-slate-700' };
     const intensity = Math.min(Math.abs(diff) / 2.0, 0.5); 
@@ -122,7 +363,6 @@ export default function App() {
     }
   };
 
-  // 判斷日期是否反轉 (基準日比目標日晚)
   const isDateReversed = useMemo(() => {
     if (!startDate || !endDate) return false;
     return new Date(startDate) > new Date(endDate);
@@ -165,7 +405,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8">
       <header className="mb-6 border-b border-slate-800 pb-6">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* 左側標題 */}
           <div>
             <h1 className="text-3xl font-bold text-white tracking-wider flex items-center gap-3">
               00981A <span className="text-blue-400">戰情面板</span>
@@ -173,59 +414,102 @@ export default function App() {
             <p className="text-slate-400 mt-2 text-sm">主動統一台股增長 ETF - 主要持股與張數變化監測</p>
           </div>
           
-          <div className="flex flex-col space-y-2">
-            <div className="flex flex-col sm:flex-row gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
-              {/* 基準日選擇 */}
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-slate-500 font-medium ml-1">比較基準 (舊)</span>
-                <div className="flex items-center gap-2">
-                  <Calendar size={18} className="text-slate-400" />
-                  <select 
-                    className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  >
-                    {dates.map(d => <option key={`start-${d}`} value={d}>{d}</option>)}
-                  </select>
-                </div>
+          {/* 右側日期選擇器與狀態提示 */}
+          <div className="flex flex-col items-end gap-2 mt-4 md:mt-0">
+            {/* 簡化版日期選擇膠囊 */}
+            <div className="flex items-center gap-2 sm:gap-4 bg-slate-900/80 px-3 sm:px-4 py-2 rounded-lg border border-slate-700/50 shadow-sm">
+              <div className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors">
+                <Calendar size={16} className="text-slate-500" />
+                <select 
+                  className="bg-transparent border-none text-sm font-mono focus:outline-none cursor-pointer"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  title="比較基準 (舊)"
+                >
+                  {dates.map(d => <option key={`start-${d}`} value={d} className="bg-slate-900">{d}</option>)}
+                </select>
               </div>
               
-              <div className="flex items-center justify-center text-slate-600 pt-5 hidden sm:flex">
-                <ArrowRightLeft size={16} />
-              </div>
+              <ArrowRightLeft size={14} className="text-slate-600" />
 
-              {/* 目標日選擇 */}
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-blue-400/70 font-medium ml-1">比較目標 (新)</span>
-                <div className="flex items-center gap-2">
-                  <Calendar size={18} className="text-slate-400" />
-                  <select 
-                    className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  >
-                    {dates.map(d => <option key={`end-${d}`} value={d}>{d}</option>)}
-                  </select>
-                </div>
+              <div className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors">
+                <Calendar size={16} className="text-slate-500" />
+                <select 
+                  className="bg-transparent border-none text-sm font-mono focus:outline-none cursor-pointer"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  title="比較目標 (新)"
+                >
+                  {dates.map(d => <option key={`end-${d}`} value={d} className="bg-slate-900">{d}</option>)}
+                </select>
               </div>
             </div>
             
-            {/* 警告提示區塊 */}
-            {isDateReversed && (
-              <div className="flex items-center gap-2 text-yellow-500 text-xs bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
-                <AlertCircle size={14} />
-                <span>注意：基準日晚於目標日，增減數值為反向顯示。</span>
-              </div>
-            )}
-            {dates.length === 1 && (
-              <div className="flex items-center gap-2 text-blue-400 text-xs bg-blue-500/10 p-2 rounded border border-blue-500/20">
-                <Info size={14} />
-                <span>目前僅有一日資料，暫無增減變化可供比較。</span>
-              </div>
-            )}
+            {/* 警告標語 (縮小並靠右排列，避免破壞排版) */}
+            <div className="flex flex-wrap justify-end gap-2">
+              {isDateReversed && (
+                  <div className="flex items-center gap-1.5 text-yellow-500 text-[11px] bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/20">
+                  <AlertCircle size={12} />
+                  <span>基準日晚於目標日，數值反向</span>
+                </div>
+              )}
+              {dates.length === 1 && (
+                <div className="flex items-center gap-1.5 text-blue-400 text-[11px] bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
+                  <Info size={12} />
+                  <span>僅一日資料暫無比較</span>
+                </div>
+              )}
+              {isMockData && (
+                <div className="flex items-center gap-1.5 text-purple-400 text-[11px] bg-purple-500/10 px-2 py-1 rounded border border-purple-500/20">
+                  <Activity size={12} />
+                  <span>展示模式 (虛擬資料)</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
+
+      {/* 選中成分股的趨勢圖面板 (位於 Header 下方) */}
+      {selectedStock && trendData && (
+        <div className="mb-8 bg-slate-800/40 border border-blue-900/50 rounded-2xl p-5 shadow-2xl backdrop-blur-sm animate-in slide-in-from-top-4 fade-in duration-300 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+          
+          <div className="flex justify-between items-center mb-5 pl-2">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Activity className="text-blue-400" size={24} />
+                {selectedStock.name} <span className="text-slate-400 text-base font-mono">({selectedStock.symbol})</span>
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">過去 30 個交易日的歷史變化紀錄</p>
+            </div>
+            <button 
+              onClick={() => setSelectedStock(null)}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-colors cursor-pointer"
+              title="關閉面板"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-52 md:h-48">
+            <TrendChart 
+              data={trendData} 
+              dataKey="weight" 
+              title="持股權重趨勢" 
+              strokeColor="#ef4444" // 紅色系
+              formatFn={(v) => v.toFixed(2) + '%'} 
+            />
+            <TrendChart 
+              data={trendData} 
+              dataKey="shares" 
+              title="持有張數趨勢" 
+              strokeColor="#3b82f6" // 藍色系
+              formatFn={(v) => Math.round(v / 1000).toLocaleString() + ' 張'} // 假設原始資料是股數，除以1000變張
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div className="flex gap-4 text-sm">
@@ -262,14 +546,20 @@ export default function App() {
           const style = getCardStyle(stock.diff);
           const isRemoved = stock.startWeight > 0 && stock.endWeight === 0;
           const isNew = stock.startWeight === 0 && stock.endWeight > 0;
+          const isSelected = selectedStock?.symbol === stock.symbol;
           
           return (
             <div 
               key={stock.symbol} 
-              className={`relative overflow-hidden rounded-xl border p-4 transition-all duration-300 hover:shadow-lg hover:shadow-black/50 hover:-translate-y-1 ${style.bg} ${style.border} ${isRemoved ? 'opacity-75 grayscale-[30%]' : ''}`}
+              onClick={() => {
+                setSelectedStock(isSelected ? null : { symbol: stock.symbol, name: stock.name });
+                if (!isSelected) {
+                  window.scrollTo({ top: 0, behavior: 'smooth' }); // 選中時平滑滾動到上方看圖表
+                }
+              }}
+              className={`relative overflow-hidden rounded-xl border p-4 cursor-pointer transition-all duration-300 hover:-translate-y-1 ${style.bg} ${style.border} ${isRemoved ? 'opacity-75 grayscale-[30%]' : ''} ${isSelected ? 'ring-2 ring-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'hover:shadow-lg hover:shadow-black/50'}`}
               style={style.style}
             >
-              {/* 狀態標籤 (新進 / 剔除) */}
               {isNew && (
                 <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-bl-lg shadow-sm z-10">
                   新進榜
