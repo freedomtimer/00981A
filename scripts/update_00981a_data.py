@@ -106,9 +106,9 @@ def update_json_data(data_date_str, today_data):
     print(f"✅ 成功獲取 {len(today_data)} 檔成分股資料")
 
     sorted_dates = sorted(historical_data.keys(), reverse=True)
-    if len(sorted_dates) > 60:
-        for old_date in sorted_dates[60:]:
-            del historical_data[old_date]
+    #if len(sorted_dates) > 60:
+        #for old_date in sorted_dates[60:]:
+            #del historical_data[old_date]
 
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(historical_data, f, ensure_ascii=False, indent=2)
