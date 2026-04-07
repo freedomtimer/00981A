@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio, Tag } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Tag } from 'lucide-react';
 
 // === Fugle 官方產業別代碼對照表 ===
 const INDUSTRY_CODES = {
@@ -25,7 +25,8 @@ const generateMockData = () => {
     { symbol: "2308", name: "台達電", weight: 3.2, shares: 150000, trend: 1 }, 
     { symbol: "2382", name: "廣達", weight: 2.8, shares: 320000, trend: 1 },
     { symbol: "2603", name: "長榮", weight: 1.5, shares: 150000, trend: -1 },
-    { symbol: "2881", name: "富邦金", weight: 0, shares: 0, trend: -1 }       
+    { symbol: "2881", name: "富邦金", weight: 0, shares: 0, trend: -1 },
+    { symbol: "3665", name: "貿聯-KY", weight: 1.2, shares: 25000, trend: 1 }
   ];
 
   const histories = currentStocks.map(stock => {
@@ -207,13 +208,22 @@ const TrendChart = ({ data, dataKey, title, strokeColor, formatFn }) => {
 };
 
 export default function App() {
+  // 💡 核心更新：多組 API Tokens (支援自動輪替)
+  const API_TOKENS = [
+    "NjFkNTkzMDQtZTI3Zi00ZjIzLTk1YjItZjg2ZDRhMTQ0ZDNhIDc4Y2VkYzhlLTAzYzAtNDI2NC1hM2Y5LWE4MWVjMWNiMTIyZg==", // 您的第一組 Token
+    "NDVjMjE4ZTQtN2RiOS00YjJjLWEyZDUtOWRiZDhjNzdlNmE5IDRmMTViOTkyLTQ4MWMtNDhmOC04Y2UyLTU3OTE5ZWQ2ZTI3OQ==", // 請把第二組 Token 取代這行文字
+    // "請在這裡貼上您的第三組_TOKEN", // 如果有更多，可以一直加下去
+  ];
+  
+  // 使用 useRef 紀錄目前使用的 Token 索引，切換時不會觸發畫面重新渲染
+  const currentTokenIndex = useRef(0);
+
   const [historicalData, setHistoricalData] = useState({});
   const [dates, setDates] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [sortBy, setSortBy] = useState('weight-desc');
   const [isLoading, setIsLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
   const [isMockData, setIsMockData] = useState(false); 
   const [selectedStock, setSelectedStock] = useState(null); 
   const [showOnlyChangedShares, setShowOnlyChangedShares] = useState(false);
@@ -227,28 +237,25 @@ export default function App() {
     volume: null,
     time: null,
     connected: false,
-    direction: null 
+    error: false 
   });
 
   // 儲存各成分股的即時報價狀態
   const [stockQuotes, setStockQuotes] = useState({});
   
-  // 💡 新增：儲存 API 抓取下來的個股產業別字典
+  // 儲存 API 抓取下來的個股產業別字典
   const [stockSectors, setStockSectors] = useState({});
+  const [isSectorsLoaded, setIsSectorsLoaded] = useState(false);
 
-  const fugleToken = "NjFkNTkzMDQtZTI3Zi00ZjIzLTk1YjItZjg2ZDRhMTQ0ZDNhIDc4Y2VkYzhlLTAzYzAtNDI2NC1hM2Y5LWE4MWVjMWNiMTIyZg==";
-
-  // 💡 新增：在元件掛載時，去抓取上市櫃 Tickers 以對照產業別
+  // 在元件掛載時，去抓取上市櫃 Tickers 以對照產業別 (使用 Token 0)
   useEffect(() => {
     let isMounted = true;
     const fetchSectors = async () => {
       try {
-        const fetchOptions = { headers: { 'X-API-KEY': fugleToken } };
-        
-        // 平行發起 TWSE (上市) 與 TPEx (上櫃) 的查詢
+        const fetchOptions = { headers: { 'X-API-KEY': API_TOKENS[0] } };
         const [twseRes, tpexRes] = await Promise.all([
-          fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers?type=EQUITY&exchange=TWSE', fetchOptions),
-          fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers?type=EQUITY&exchange=TPEx', fetchOptions)
+          fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers?type=EQUITY&exchange=TWSE', fetchOptions).catch(() => ({ ok: false })),
+          fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers?type=EQUITY&exchange=TPEx', fetchOptions).catch(() => ({ ok: false }))
         ]);
 
         const sectorMap = {};
@@ -256,32 +263,29 @@ export default function App() {
         if (twseRes.ok) {
           const twseData = await twseRes.json();
           twseData.data?.forEach(item => {
-            if (item.industry) {
-              sectorMap[item.symbol] = INDUSTRY_CODES[item.industry] || "台股標的";
-            }
+            if (item.industry) sectorMap[item.symbol] = INDUSTRY_CODES[item.industry] || "台股標的";
           });
         }
         
         if (tpexRes.ok) {
           const tpexData = await tpexRes.json();
           tpexData.data?.forEach(item => {
-            if (item.industry) {
-              sectorMap[item.symbol] = INDUSTRY_CODES[item.industry] || "台股標的";
-            }
+            if (item.industry) sectorMap[item.symbol] = INDUSTRY_CODES[item.industry] || "台股標的";
           });
         }
         
-        if (isMounted) setStockSectors(sectorMap);
+        if (isMounted) {
+          setStockSectors(sectorMap);
+          setIsSectorsLoaded(true);
+        }
       } catch (error) {
         console.error("[Fugle API] 取得產業別資料失敗", error);
+        if (isMounted) setIsSectorsLoaded(true);
       }
     };
 
     fetchSectors();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
   // 原始的靜態資料拉取邏輯
@@ -384,7 +388,7 @@ export default function App() {
     return holdingsDiff.filter(stock => stock.sharesDiff !== 0);
   }, [holdingsDiff, showOnlyChangedShares]);
 
-  // 背景輪詢各成分股即時報價 (每 30 秒)
+  // 💡 核心更新：背景輪詢各成分股即時報價 (支援多 Token 遇到 429 自動切換重試)
   useEffect(() => {
     let intervalId;
     let isMounted = true;
@@ -393,40 +397,69 @@ export default function App() {
       if (!displayedHoldings || displayedHoldings.length === 0) return;
       const symbols = displayedHoldings.map(h => h.symbol);
 
-      for (const symbol of symbols) {
+      for (let i = 0; i < symbols.length; i++) {
         if (!isMounted) break;
-        try {
-          const res = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${symbol}`, {
-            headers: { 'X-API-KEY': fugleToken }
-          });
-          
-          if (res.status === 429) {
-            console.warn("Fugle API 限流 (429)，暫停本次更新");
-            break; 
-          }
+        const symbol = symbols[i];
+        
+        let success = false;
+        let tokenAttempts = 0;
 
-          if (res.ok) {
-            const data = await res.json();
-            const price = data.lastTrade?.price || data.closePrice || data.referencePrice;
-            const refPrice = data.referencePrice;
-            if (price) {
-              setStockQuotes(prev => ({
-                ...prev,
-                [symbol]: {
-                  price,
-                  change: price - refPrice,
-                  changePercent: refPrice ? ((price - refPrice) / refPrice) * 100 : 0
-                }
-              }));
+        // 當這個股票還沒抓成功，且還沒把所有 Token 試過一輪時
+        while (!success && tokenAttempts < API_TOKENS.length) {
+          try {
+            const currentToken = API_TOKENS[currentTokenIndex.current];
+            const res = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${symbol}`, {
+              headers: { 'X-API-KEY': currentToken }
+            });
+            
+            if (res.status === 429) {
+              // 記錄一下切換過程，方便我們 F12 觀察
+              console.warn(`[API] Token ${currentTokenIndex.current + 1} 已限流 (429)，自動切換至下一個 Token...`);
+              
+              // 索引值 +1，並使用取餘數確保會在陣列內循環 (例如：0->1->2->0)
+              currentTokenIndex.current = (currentTokenIndex.current + 1) % API_TOKENS.length;
+              tokenAttempts++;
+              
+              // 稍等 100 毫秒後進入下一次 while 迴圈，用新的 Token 重試同一檔股票
+              await new Promise(resolve => setTimeout(resolve, 100));
+              continue; 
             }
+
+            if (res.ok) {
+              const data = await res.json();
+              const price = data.lastTrade?.price || data.closePrice || data.referencePrice;
+              const refPrice = data.referencePrice;
+              if (price) {
+                setStockQuotes(prev => ({
+                  ...prev,
+                  [symbol]: {
+                    price,
+                    change: price - refPrice,
+                    changePercent: refPrice ? ((price - refPrice) / refPrice) * 100 : 0
+                  }
+                }));
+              }
+              success = true; // 標記成功，準備抓下一檔股票
+            } else {
+              success = true; // 遇到 404 等非限流錯誤，直接跳過這檔股票
+            }
+          } catch (e) {
+            success = true; // 遇到網路斷線等嚴重錯誤，跳過這檔股票
           }
-        } catch (e) {
-          // 忽略單一股票的網路錯誤
         }
+
+        // 如果跑完所有 Token 還是沒成功 (全部都 429)，就提早結束這輪的輪詢
+        if (!success) {
+          console.warn("⚠️ 所有準備的 API Tokens 皆已觸發限流，提早結束本輪報價更新。");
+          break; 
+        }
+
+        // 成功後，為了保護 API，刻意放慢節奏，每一檔抓取間隔 150ms
         await new Promise(resolve => setTimeout(resolve, 150));
       }
     };
 
+    // 初次載入延遲一下再開始，避免跟 WebSocket 搶資源
     const timeoutId = setTimeout(() => {
       fetchComponentQuotes();
       intervalId = setInterval(fetchComponentQuotes, 30000); 
@@ -439,7 +472,7 @@ export default function App() {
     };
   }, [displayedHoldings]);
 
-  // Fugle API 與 WebSocket 連線處理 (00981A 主標題)
+  // Fugle API 與 WebSocket 連線處理 (00981A 主標題，固定使用 Token 0)
   useEffect(() => {
     let ws;
     let reconnectTimer;
@@ -447,7 +480,7 @@ export default function App() {
     const fetchInitialQuote = async () => {
       try {
         const res = await fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/00981A', {
-          headers: { 'X-API-KEY': fugleToken }
+          headers: { 'X-API-KEY': API_TOKENS[0] }
         });
         
         if (res.ok) {
@@ -455,12 +488,10 @@ export default function App() {
           const price = data.lastTrade?.price || data.closePrice || data.referencePrice;
           const refPrice = data.referencePrice; 
           
-          if (price) {
+          if (price !== undefined && price !== null) {
             const timestamp = data.lastTrade?.time ? (data.lastTrade.time > 1e14 ? data.lastTrade.time / 1000 : data.lastTrade.time) : Date.now();
             const dateObj = new Date(timestamp);
-            const timeString = isNaN(dateObj) 
-              ? new Date().toLocaleTimeString('zh-TW', { hour12: false }) 
-              : dateObj.toLocaleTimeString('zh-TW', { hour12: false });
+            const timeString = isNaN(dateObj) ? new Date().toLocaleTimeString('zh-TW', { hour12: false }) : dateObj.toLocaleTimeString('zh-TW', { hour12: false });
 
             setRealtimeQuote(prev => {
               const currentPrice = prev.price || price;
@@ -479,13 +510,19 @@ export default function App() {
                 referencePrice: currentRefPrice,
                 change: change,
                 changePercent: changePercent,
-                time: prev.time || (data.isClosed ? `${timeString} (已收盤)` : timeString)
+                time: prev.time || (data.isClosed ? `${timeString} (已收盤)` : timeString),
+                error: false
               };
             });
+          } else {
+             setRealtimeQuote(prev => ({ ...prev, error: true }));
           }
+        } else {
+          setRealtimeQuote(prev => ({ ...prev, error: true }));
         }
       } catch (e) {
         console.error("[Fugle REST] 取得初始報價失敗", e);
+        setRealtimeQuote(prev => ({ ...prev, error: true }));
       }
     };
 
@@ -493,20 +530,10 @@ export default function App() {
       ws = new WebSocket('wss://api.fugle.tw/marketdata/v1.0/stock/streaming');
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({
-          event: "auth",
-          data: { apikey: fugleToken }
-        }));
-
+        ws.send(JSON.stringify({ event: "auth", data: { apikey: API_TOKENS[0] } }));
         setTimeout(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              event: "subscribe",
-              data: {
-                channel: "trades", 
-                symbol: "00981A"
-              }
-            }));
+            ws.send(JSON.stringify({ event: "subscribe", data: { channel: "trades", symbol: "00981A" } }));
             setRealtimeQuote(prev => ({ ...prev, connected: true }));
           }
         }, 500);
@@ -517,27 +544,13 @@ export default function App() {
           const msg = JSON.parse(event.data);
           
           if (msg.event === 'authenticated') {
-            ws.send(JSON.stringify({
-              event: "subscribe",
-              data: {
-                channel: "trades",
-                symbol: "00981A"
-              }
-            }));
+            ws.send(JSON.stringify({ event: "subscribe", data: { channel: "trades", symbol: "00981A" } }));
             setRealtimeQuote(prev => ({ ...prev, connected: true }));
           } 
           else if (msg.event === 'data' && msg.data) {
             if (msg.data.price !== undefined) {
               setRealtimeQuote(prev => {
                 const newPrice = msg.data.price;
-                let direction = prev.direction;
-                
-                // 為了特效保留 direction，但大字體顏色我們已改用整體 change
-                if (prev.price !== null) {
-                  if (newPrice > prev.price) direction = 'up';
-                  else if (newPrice < prev.price) direction = 'down';
-                }
-
                 let change = prev.change;
                 let changePercent = prev.changePercent;
                 if (prev.referencePrice) {
@@ -547,9 +560,7 @@ export default function App() {
 
                 const timestamp = msg.data.time > 1e14 ? msg.data.time / 1000 : msg.data.time;
                 const dateObj = new Date(timestamp);
-                const timeString = isNaN(dateObj) 
-                  ? new Date().toLocaleTimeString('zh-TW', { hour12: false }) 
-                  : dateObj.toLocaleTimeString('zh-TW', { hour12: false });
+                const timeString = isNaN(dateObj) ? new Date().toLocaleTimeString('zh-TW', { hour12: false }) : dateObj.toLocaleTimeString('zh-TW', { hour12: false });
 
                 return {
                   ...prev,
@@ -559,7 +570,7 @@ export default function App() {
                   volume: msg.data.volume || msg.data.size,
                   time: timeString,
                   connected: true,
-                  direction: direction
+                  error: false
                 };
               });
             }
@@ -574,10 +585,7 @@ export default function App() {
         reconnectTimer = setTimeout(connectWS, 5000);
       };
 
-      ws.onerror = (err) => {
-        console.error("[Fugle WS] Connection Error", err);
-        ws.close();
-      };
+      ws.onerror = (err) => { ws.close(); };
     };
 
     fetchInitialQuote().then(connectWS);
@@ -626,7 +634,6 @@ export default function App() {
     return new Date(startDate) > new Date(endDate);
   }, [startDate, endDate]);
 
-  // 格式化市值的輔助函式 (自動轉 億/萬)
   const formatMarketValue = (val) => {
     if (val >= 100000000) return (val / 100000000).toFixed(2) + ' 億';
     if (val >= 10000) return Math.round(val / 10000).toLocaleString() + ' 萬';
@@ -706,6 +713,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* ETF 主標題報價區塊 */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-800/60 border border-slate-700/80 p-4 sm:px-6 rounded-2xl mb-8 shadow-lg relative overflow-hidden backdrop-blur-sm">
         <div className={`absolute top-0 left-0 w-1.5 h-full ${realtimeQuote.connected ? 'bg-blue-500' : 'bg-slate-500'}`}></div>
 
@@ -721,12 +729,11 @@ export default function App() {
             
             <div className="flex flex-wrap items-baseline gap-2 mt-0.5">
               <h2 className="text-2xl font-bold text-white mr-1">00981A</h2>
-              {realtimeQuote.price ? (
+              {realtimeQuote.price !== null ? (
                 <>
                   <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.change > 0 ? 'text-red-400' : realtimeQuote.change < 0 ? 'text-green-400' : 'text-white'}`}>
                     {realtimeQuote.price.toFixed(2)}
                   </span>
-                  
                   {realtimeQuote.change !== null && (
                     <div className={`flex items-center ml-2 font-bold ${realtimeQuote.change > 0 ? 'text-red-400' : realtimeQuote.change < 0 ? 'text-green-400' : 'text-slate-400'}`}>
                       <span className="text-xl flex items-center gap-0.5">
@@ -739,10 +746,10 @@ export default function App() {
                     </div>
                   )}
                 </>
+              ) : realtimeQuote.error ? (
+                <span className="text-lg text-slate-500 ml-3">暫無報價資料</span>
               ) : (
-                <span className="text-lg text-slate-500 animate-pulse font-normal ml-3">
-                  取得最新價格中...
-                </span>
+                <span className="text-lg text-slate-500 animate-pulse font-normal ml-3">取得最新價格中...</span>
               )}
             </div>
           </div>
@@ -779,10 +786,9 @@ export default function App() {
                   <Activity className="text-blue-400" size={24} />
                   {selectedStock.name} <span className="text-slate-400 text-base font-mono">({selectedStock.symbol})</span>
                 </h2>
-                {/* 💡 這裡將會顯示透過 API 查找到的動態產業別名稱 */}
                 <span className="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
                   <Tag size={12} />
-                  {stockSectors[selectedStock.symbol] || "載入中..."}
+                  {stockSectors[selectedStock.symbol] ? stockSectors[selectedStock.symbol] : (isSectorsLoaded ? "台股標的" : "載入中...")}
                 </span>
               </div>
             </div>
@@ -864,11 +870,8 @@ export default function App() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         {displayedHoldings.map((stock) => {
           const style = getCardStyle(stock.sharesDiff, stock.diff);
-          
-          // 💡 更新：新進榜與遭剔除改用 shares (張數) 來判斷，更加精準！
           const isRemoved = stock.startShares > 0 && stock.endShares === 0;
           const isNew = stock.startShares === 0 && stock.endShares > 0;
-          
           const isSelected = selectedStock?.symbol === stock.symbol;
           
           const quote = stockQuotes[stock.symbol];
@@ -934,7 +937,7 @@ export default function App() {
                 </div>
                 
                 <div className="flex items-center gap-1 mb-0.5">
-                  <span className="text-[10px] text-slate-500">權重</span>
+                  <span className="text-[10px] text-slate-500">權重變化</span>
                   <span className={`text-sm font-bold tracking-tight ${stock.diff > 0 ? 'text-red-400' : stock.diff < 0 ? 'text-green-400' : 'text-slate-500'}`}>
                     {stock.diff > 0 ? '+' : ''}{stock.diff.toFixed(2)}%
                   </span>
