@@ -724,7 +724,7 @@ export default function App() {
               <h2 className="text-2xl font-bold text-white mr-1">00981A</h2>
               {realtimeQuote.price ? (
                 <>
-                  <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.direction === 'up' ? 'text-red-400' : realtimeQuote.direction === 'down' ? 'text-green-400' : 'text-white'}`}>
+                  <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.change === 'up' ? 'text-red-400' : realtimeQuote.change === 'down' ? 'text-green-400' : 'text-white'}`}>
                     {realtimeQuote.price.toFixed(2)}
                   </span>
                   
