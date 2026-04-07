@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio, Newspaper } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio, Tag, Newspaper } from 'lucide-react';
+
+// === 股票族群模擬知識庫 ===
+const STOCK_META = {
+  "2330": { sector: "半導體業" },
+  "2317": { sector: "其他電子業" },
+  "2454": { sector: "半導體業" },
+  "2308": { sector: "電子零組件業" },
+  "2382": { sector: "電腦及週邊設備業" },
+  "2603": { sector: "航運業" },
+  "2881": { sector: "金融保險業" }
+};
+
+const getStockMeta = (symbol) => {
+  return STOCK_META[symbol] || { sector: "台股標的" };
+};
 
 // === 產生 30 天模擬展示資料的輔助函式 ===
 const generateMockData = () => {
@@ -268,7 +283,7 @@ export default function App() {
     fetchHoldings();
   }, []);
 
-  // 當選擇成分股時，去 FinMind 抓取近 14 日焦點新聞 (加入防呆與錯誤處理)
+  // 當選擇成分股時，去 FinMind 抓取近 14 日焦點新聞
   useEffect(() => {
     if (!selectedStock) {
       setStockNews([]);
@@ -534,6 +549,7 @@ export default function App() {
                 const newPrice = msg.data.price;
                 let direction = prev.direction;
                 
+                // 為了特效保留 direction，但大字體顏色我們已改用整體 change
                 if (prev.price !== null) {
                   if (newPrice > prev.price) direction = 'up';
                   else if (newPrice < prev.price) direction = 'down';
@@ -638,7 +654,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-4">
         <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-        <p className="animate-pulse tracking-widest text-sm">正在載入戰情資料...</p>
+        <p className="animate-pulse tracking-widest text-sm">正在載入資料...</p>
       </div>
     );
   }
@@ -649,7 +665,7 @@ export default function App() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white tracking-wider flex items-center gap-3">
-              00981A <span className="text-blue-400">戰情面板</span>
+              00981A <span className="text-blue-400">面板</span>
             </h1>
             <p className="text-slate-400 mt-2 text-sm">主動統一台股增長 ETF - 主要持股與張數變化監測</p>
           </div>
@@ -724,7 +740,8 @@ export default function App() {
               <h2 className="text-2xl font-bold text-white mr-1">00981A</h2>
               {realtimeQuote.price ? (
                 <>
-                  <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.change === 'up' ? 'text-red-400' : realtimeQuote.change === 'down' ? 'text-green-400' : 'text-white'}`}>
+                  {/* 💡 更新：00981A主報價顏色，統一改用 realtimeQuote.change 跟昨收價進行比較 */}
+                  <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.change > 0 ? 'text-red-400' : realtimeQuote.change < 0 ? 'text-green-400' : 'text-white'}`}>
                     {realtimeQuote.price.toFixed(2)}
                   </span>
                   
@@ -780,6 +797,10 @@ export default function App() {
                   <Activity className="text-blue-400" size={24} />
                   {selectedStock.name} <span className="text-slate-400 text-base font-mono">({selectedStock.symbol})</span>
                 </h2>
+                <span className="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                  <Tag size={12} />
+                  {getStockMeta(selectedStock.symbol).sector}
+                </span>
               </div>
               
               <div className="bg-slate-900/60 border border-slate-700 p-3 rounded-lg flex items-start gap-3 mt-3 shadow-inner">
@@ -895,8 +916,11 @@ export default function App() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         {displayedHoldings.map((stock) => {
           const style = getCardStyle(stock.sharesDiff, stock.diff);
-          const isRemoved = stock.startWeight > 0 && stock.endWeight === 0;
-          const isNew = stock.startWeight === 0 && stock.endWeight > 0;
+          
+          // 💡 更新：新進榜與遭剔除改用 shares (張數) 來判斷，更加精準！
+          const isRemoved = stock.startShares > 0 && stock.endShares === 0;
+          const isNew = stock.startShares === 0 && stock.endShares > 0;
+          
           const isSelected = selectedStock?.symbol === stock.symbol;
           
           const quote = stockQuotes[stock.symbol];
@@ -921,7 +945,7 @@ export default function App() {
               )}
               {isRemoved && (
                 <div className="absolute top-0 left-0 w-full bg-slate-800/90 border-b border-slate-700 text-slate-300 text-[10px] font-bold text-center py-1 z-10 backdrop-blur-sm">
-                  已剔除 / 跌出榜外
+                  已清倉 / 遭剔除
                 </div>
               )}
 
