@@ -1,19 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio, Tag } from 'lucide-react';
 
-// === 股票族群模擬知識庫 ===
-const STOCK_META = {
-  "2330": { sector: "半導體業" },
-  "2317": { sector: "其他電子業" },
-  "2454": { sector: "半導體業" },
-  "2308": { sector: "電子零組件業" },
-  "2382": { sector: "電腦及週邊設備業" },
-  "2603": { sector: "航運業" },
-  "2881": { sector: "金融保險業" }
-};
-
-const getStockMeta = (symbol) => {
-  return STOCK_META[symbol] || { sector: "台股標的" };
+// === Fugle 官方產業別代碼對照表 ===
+const INDUSTRY_CODES = {
+  "01": "水泥工業", "02": "食品工業", "03": "塑膠工業", "04": "紡織纖維", "05": "電機機械",
+  "06": "電器電纜", "08": "玻璃陶瓷", "09": "造紙工業", "10": "鋼鐵工業", "11": "橡膠工業",
+  "12": "汽車工業", "14": "建材營造", "15": "航運業", "16": "觀光餐旅", "17": "金融保險",
+  "18": "貿易百貨", "19": "綜合", "20": "其他", "21": "化學工業", "22": "生技醫療業",
+  "23": "油電燃氣業", "24": "半導體業", "25": "電腦及週邊設備業", "26": "光電業", "27": "通信網路業",
+  "28": "電子零組件業", "29": "電子通路業", "30": "資訊服務業", "31": "其他電子業", "32": "文化創意業",
+  "33": "農業科技業", "34": "電子商務", "35": "綠能環保", "36": "數位雲端", "37": "運動休閒",
+  "38": "居家生活", "80": "管理股票", "00": "ETF/衍生性商品"
 };
 
 // === 產生 30 天模擬展示資料的輔助函式 ===
@@ -235,8 +232,57 @@ export default function App() {
 
   // 儲存各成分股的即時報價狀態
   const [stockQuotes, setStockQuotes] = useState({});
+  
+  // 💡 新增：儲存 API 抓取下來的個股產業別字典
+  const [stockSectors, setStockSectors] = useState({});
 
   const fugleToken = "NjFkNTkzMDQtZTI3Zi00ZjIzLTk1YjItZjg2ZDRhMTQ0ZDNhIDc4Y2VkYzhlLTAzYzAtNDI2NC1hM2Y5LWE4MWVjMWNiMTIyZg==";
+
+  // 💡 新增：在元件掛載時，去抓取上市櫃 Tickers 以對照產業別
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSectors = async () => {
+      try {
+        const fetchOptions = { headers: { 'X-API-KEY': fugleToken } };
+        
+        // 平行發起 TWSE (上市) 與 TPEx (上櫃) 的查詢
+        const [twseRes, tpexRes] = await Promise.all([
+          fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers?type=EQUITY&exchange=TWSE', fetchOptions),
+          fetch('https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers?type=EQUITY&exchange=TPEx', fetchOptions)
+        ]);
+
+        const sectorMap = {};
+        
+        if (twseRes.ok) {
+          const twseData = await twseRes.json();
+          twseData.data?.forEach(item => {
+            if (item.industry) {
+              sectorMap[item.symbol] = INDUSTRY_CODES[item.industry] || "台股標的";
+            }
+          });
+        }
+        
+        if (tpexRes.ok) {
+          const tpexData = await tpexRes.json();
+          tpexData.data?.forEach(item => {
+            if (item.industry) {
+              sectorMap[item.symbol] = INDUSTRY_CODES[item.industry] || "台股標的";
+            }
+          });
+        }
+        
+        if (isMounted) setStockSectors(sectorMap);
+      } catch (error) {
+        console.error("[Fugle API] 取得產業別資料失敗", error);
+      }
+    };
+
+    fetchSectors();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // 原始的靜態資料拉取邏輯
   useEffect(() => {
@@ -677,7 +723,6 @@ export default function App() {
               <h2 className="text-2xl font-bold text-white mr-1">00981A</h2>
               {realtimeQuote.price ? (
                 <>
-                  {/* 💡 更新：00981A主報價顏色，統一改用 realtimeQuote.change 跟昨收價進行比較 */}
                   <span className={`text-4xl tracking-tight font-bold transition-colors duration-300 ${realtimeQuote.change > 0 ? 'text-red-400' : realtimeQuote.change < 0 ? 'text-green-400' : 'text-white'}`}>
                     {realtimeQuote.price.toFixed(2)}
                   </span>
@@ -734,9 +779,10 @@ export default function App() {
                   <Activity className="text-blue-400" size={24} />
                   {selectedStock.name} <span className="text-slate-400 text-base font-mono">({selectedStock.symbol})</span>
                 </h2>
+                {/* 💡 這裡將會顯示透過 API 查找到的動態產業別名稱 */}
                 <span className="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
                   <Tag size={12} />
-                  {getStockMeta(selectedStock.symbol).sector}
+                  {stockSectors[selectedStock.symbol] || "載入中..."}
                 </span>
               </div>
             </div>
