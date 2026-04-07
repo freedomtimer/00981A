@@ -750,21 +750,25 @@ export default function App() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-52 md:h-48">
-            <TrendChart 
-              data={trendData} 
-              dataKey="weight" 
-              title="持股權重趨勢" 
-              strokeColor="#ef4444" 
-              formatFn={(v) => v.toFixed(2) + '%'} 
-            />
-            <TrendChart 
-              data={trendData} 
-              dataKey="shares" 
-              title="持有張數趨勢" 
-              strokeColor="#3b82f6" 
-              formatFn={(v) => Math.round(v / 1000).toLocaleString() + ' 張'} 
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-52 md:h-48">
+              <TrendChart 
+                data={trendData} 
+                dataKey="weight" 
+                title="持股權重趨勢" 
+                strokeColor="#ef4444" 
+                formatFn={(v) => v.toFixed(2) + '%'} 
+              />
+            </div>
+            <div className="h-52 md:h-48">
+              <TrendChart 
+                data={trendData} 
+                dataKey="shares" 
+                title="持有張數趨勢" 
+                strokeColor="#3b82f6" 
+                formatFn={(v) => Math.round(v / 1000).toLocaleString() + ' 張'} 
+              />
+            </div>
           </div>
         </div>
       )}
