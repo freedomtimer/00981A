@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio, Tag, Newspaper } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Calendar, Filter, ArrowRightLeft, AlertCircle, Info, X, Activity, Radio, Tag } from 'lucide-react';
 
 // === 股票族群模擬知識庫 ===
 const STOCK_META = {
@@ -235,11 +235,6 @@ export default function App() {
 
   // 儲存各成分股的即時報價狀態
   const [stockQuotes, setStockQuotes] = useState({});
-  
-  // 儲存目前選中標的的即時新聞與載入狀態
-  const [stockNews, setStockNews] = useState([]);
-  const [isNewsLoading, setIsNewsLoading] = useState(false);
-  const [isNewsError, setIsNewsError] = useState(false);
 
   const fugleToken = "NjFkNTkzMDQtZTI3Zi00ZjIzLTk1YjItZjg2ZDRhMTQ0ZDNhIDc4Y2VkYzhlLTAzYzAtNDI2NC1hM2Y5LWE4MWVjMWNiMTIyZg==";
 
@@ -282,64 +277,6 @@ export default function App() {
     };
     fetchHoldings();
   }, []);
-
-  // 當選擇成分股時，去 FinMind 抓取近 14 日焦點新聞
-  useEffect(() => {
-    if (!selectedStock) {
-      setStockNews([]);
-      setIsNewsError(false);
-      return;
-    }
-
-    let isMounted = true;
-    const fetchStockNews = async () => {
-      setIsNewsLoading(true);
-      setIsNewsError(false); 
-      try {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - 14); 
-        
-        const endDateStr = end.toISOString().split('T')[0];
-        const startDateStr = start.toISOString().split('T')[0];
-        
-        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockNews&data_id=${selectedStock.symbol}&start_date=${startDateStr}&end_date=${endDateStr}`;
-        const res = await fetch(url);
-        
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
-        const json = await res.json();
-        if (json.status === 200 && json.data) {
-          const uniqueNews = [];
-          const titles = new Set();
-          
-          const reversedData = [...json.data].reverse();
-          
-          for (const item of reversedData) {
-            if (!titles.has(item.title)) {
-              titles.add(item.title);
-              uniqueNews.push(item);
-            }
-            if (uniqueNews.length >= 4) break;
-          }
-          if (isMounted) setStockNews(uniqueNews);
-        } else {
-          if (isMounted) setIsNewsError(true);
-        }
-      } catch (e) {
-        console.error("[FinMind News API] 發生網路或 CORS 錯誤:", e);
-        if (isMounted) setIsNewsError(true); 
-      } finally {
-        if (isMounted) setIsNewsLoading(false);
-      }
-    };
-
-    fetchStockNews();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedStock]);
 
   const holdingsDiff = useMemo(() => {
     if (!startDate || !endDate || !historicalData || Object.keys(historicalData).length === 0) return [];
@@ -654,7 +591,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-4">
         <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-        <p className="animate-pulse tracking-widest text-sm">正在載入資料...</p>
+        <p className="animate-pulse tracking-widest text-sm">正在載入戰情資料...</p>
       </div>
     );
   }
@@ -665,7 +602,7 @@ export default function App() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white tracking-wider flex items-center gap-3">
-              00981A <span className="text-blue-400">面板</span>
+              00981A <span className="text-blue-400">戰情面板</span>
             </h1>
             <p className="text-slate-400 mt-2 text-sm">主動統一台股增長 ETF - 主要持股與張數變化監測</p>
           </div>
@@ -801,45 +738,6 @@ export default function App() {
                   <Tag size={12} />
                   {getStockMeta(selectedStock.symbol).sector}
                 </span>
-              </div>
-              
-              <div className="bg-slate-900/60 border border-slate-700 p-3 rounded-lg flex items-start gap-3 mt-3 shadow-inner">
-                <div className="bg-blue-500/20 p-1.5 rounded-full mt-0.5 shrink-0">
-                  <Newspaper size={16} className="text-blue-400" />
-                </div>
-                <div className="w-full">
-                  <h4 className="text-[11px] font-bold text-blue-400 mb-1.5 tracking-wider">近期焦點新聞 (FinMind)</h4>
-                  {isNewsLoading ? (
-                     <div className="text-sm text-slate-400 animate-pulse">正在為您搜尋最新市場新聞...</div>
-                  ) : isNewsError ? (
-                     <div className="flex flex-col gap-1.5">
-                       <div className="text-sm text-slate-500 flex items-center gap-1">
-                         <AlertCircle size={14} className="text-slate-500" />
-                         <span>API 連線受限，無法自動載入新聞。</span>
-                       </div>
-                       <a 
-                         href={`https://tw.stock.yahoo.com/quote/${selectedStock.symbol}/news`} 
-                         target="_blank" 
-                         rel="noreferrer" 
-                         className="text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors w-fit"
-                       >
-                         👉 點擊前往 Yahoo 股市查看【{selectedStock.name}】最新新聞
-                       </a>
-                     </div>
-                  ) : stockNews.length > 0 ? (
-                     <ul className="space-y-1.5 list-none">
-                       {stockNews.map((news, idx) => (
-                         <li key={idx} className="text-sm text-slate-300 leading-snug line-clamp-1 truncate max-w-full hover:text-blue-300 transition-colors">
-                           <a href={news.link} target="_blank" rel="noreferrer" className="hover:underline">
-                             • {news.title}
-                           </a>
-                         </li>
-                       ))}
-                     </ul>
-                  ) : (
-                     <div className="text-sm text-slate-500">近期無相關新聞資料。</div>
-                  )}
-                </div>
               </div>
             </div>
 
