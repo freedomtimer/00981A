@@ -5,7 +5,7 @@ on:
   schedule:
     # 這是 UTC 時間 10:00，等於台灣時間 (CST) 18:00
     # 1-5 代表週一到週五執行
-    - cron: '0 10 * * 1-5'
+    - cron: '0 8 * * 1-5'
   workflow_dispatch: # 允許您隨時在 GitHub 網頁上點擊按鈕手動測試
 
 # 賦予 GitHub Actions 寫入權限，才能把爬完的 data.json 推送回倉庫
