@@ -7160,5 +7160,307 @@
       "shares": 63000,
       "weight": 0.0
     }
+  ],
+  "2026-05-07": [
+    {
+      "symbol": "2330",
+      "name": "台積電",
+      "shares": 11359000,
+      "weight": 9.62
+    },
+    {
+      "symbol": "2383",
+      "name": "台光電",
+      "shares": 4605000,
+      "weight": 8.38
+    },
+    {
+      "symbol": "2345",
+      "name": "智邦",
+      "shares": 6231000,
+      "weight": 5.85
+    },
+    {
+      "symbol": "2454",
+      "name": "聯發科",
+      "shares": 4463000,
+      "weight": 5.6
+    },
+    {
+      "symbol": "2308",
+      "name": "台達電",
+      "shares": 6572000,
+      "weight": 5.49
+    },
+    {
+      "symbol": "3665",
+      "name": "貿聯-KY",
+      "shares": 4703848,
+      "weight": 4.8
+    },
+    {
+      "symbol": "8046",
+      "name": "南電",
+      "shares": 12658000,
+      "weight": 4.4
+    },
+    {
+      "symbol": "2368",
+      "name": "金像電",
+      "shares": 8260000,
+      "weight": 4.39
+    },
+    {
+      "symbol": "3017",
+      "name": "奇鋐",
+      "shares": 4082000,
+      "weight": 3.61
+    },
+    {
+      "symbol": "6223",
+      "name": "旺矽",
+      "shares": 1922000,
+      "weight": 3.55
+    },
+    {
+      "symbol": "3037",
+      "name": "欣興",
+      "shares": 10387000,
+      "weight": 3.41
+    },
+    {
+      "symbol": "6669",
+      "name": "緯穎",
+      "shares": 1819000,
+      "weight": 3.26
+    },
+    {
+      "symbol": "3653",
+      "name": "健策",
+      "shares": 2267000,
+      "weight": 3.22
+    },
+    {
+      "symbol": "5274",
+      "name": "信驊",
+      "shares": 483000,
+      "weight": 3.17
+    },
+    {
+      "symbol": "3711",
+      "name": "日月光投控",
+      "shares": 13833000,
+      "weight": 2.74
+    },
+    {
+      "symbol": "2327",
+      "name": "國巨*",
+      "shares": 17221000,
+      "weight": 2.35
+    },
+    {
+      "symbol": "6274",
+      "name": "台燿",
+      "shares": 4151000,
+      "weight": 2.2
+    },
+    {
+      "symbol": "2303",
+      "name": "聯電",
+      "shares": 46374000,
+      "weight": 1.64
+    },
+    {
+      "symbol": "2449",
+      "name": "京元電子",
+      "shares": 12919000,
+      "weight": 1.61
+    },
+    {
+      "symbol": "3443",
+      "name": "創意",
+      "shares": 764000,
+      "weight": 1.53
+    },
+    {
+      "symbol": "6515",
+      "name": "穎崴",
+      "shares": 422000,
+      "weight": 1.53
+    },
+    {
+      "symbol": "2317",
+      "name": "鴻海",
+      "shares": 14177000,
+      "weight": 1.32
+    },
+    {
+      "symbol": "6510",
+      "name": "精測",
+      "shares": 930000,
+      "weight": 1.27
+    },
+    {
+      "symbol": "6805",
+      "name": "富世達",
+      "shares": 1761000,
+      "weight": 1.24
+    },
+    {
+      "symbol": "3189",
+      "name": "景碩",
+      "shares": 5360000,
+      "weight": 0.97
+    },
+    {
+      "symbol": "8358",
+      "name": "金居",
+      "shares": 5558000,
+      "weight": 0.96
+    },
+    {
+      "symbol": "3264",
+      "name": "欣銓",
+      "shares": 9030000,
+      "weight": 0.82
+    },
+    {
+      "symbol": "8210",
+      "name": "勤誠",
+      "shares": 1540000,
+      "weight": 0.73
+    },
+    {
+      "symbol": "6147",
+      "name": "頎邦",
+      "shares": 7985000,
+      "weight": 0.56
+    },
+    {
+      "symbol": "3661",
+      "name": "世芯-KY",
+      "shares": 296000,
+      "weight": 0.52
+    },
+    {
+      "symbol": "6187",
+      "name": "萬潤",
+      "shares": 1224000,
+      "weight": 0.51
+    },
+    {
+      "symbol": "5439",
+      "name": "高技",
+      "shares": 3228000,
+      "weight": 0.48
+    },
+    {
+      "symbol": "2357",
+      "name": "華碩",
+      "shares": 1996000,
+      "weight": 0.47
+    },
+    {
+      "symbol": "8996",
+      "name": "高力",
+      "shares": 1034000,
+      "weight": 0.41
+    },
+    {
+      "symbol": "8150",
+      "name": "南茂",
+      "shares": 11334000,
+      "weight": 0.41
+    },
+    {
+      "symbol": "2404",
+      "name": "漢唐",
+      "shares": 1093000,
+      "weight": 0.4
+    },
+    {
+      "symbol": "1590",
+      "name": "亞德客-KY",
+      "shares": 530000,
+      "weight": 0.29
+    },
+    {
+      "symbol": "2313",
+      "name": "華通",
+      "shares": 2624000,
+      "weight": 0.24
+    },
+    {
+      "symbol": "6191",
+      "name": "精成科",
+      "shares": 3988000,
+      "weight": 0.15
+    },
+    {
+      "symbol": "3376",
+      "name": "新日興",
+      "shares": 1741000,
+      "weight": 0.14
+    },
+    {
+      "symbol": "2481",
+      "name": "強茂",
+      "shares": 3654000,
+      "weight": 0.14
+    },
+    {
+      "symbol": "6415",
+      "name": "矽力*-KY",
+      "shares": 660000,
+      "weight": 0.1
+    },
+    {
+      "symbol": "4966",
+      "name": "譜瑞-KY",
+      "shares": 386000,
+      "weight": 0.09
+    },
+    {
+      "symbol": "3217",
+      "name": "優群",
+      "shares": 874000,
+      "weight": 0.06
+    },
+    {
+      "symbol": "2002",
+      "name": "中鋼",
+      "shares": 5163000,
+      "weight": 0.04
+    },
+    {
+      "symbol": "1319",
+      "name": "東陽",
+      "shares": 511000,
+      "weight": 0.01
+    },
+    {
+      "symbol": "1815",
+      "name": "富喬",
+      "shares": 107000,
+      "weight": 0.0
+    },
+    {
+      "symbol": "2439",
+      "name": "美律",
+      "shares": 18000,
+      "weight": 0.0
+    },
+    {
+      "symbol": "2337",
+      "name": "旺宏",
+      "shares": 8000,
+      "weight": 0.0
+    },
+    {
+      "symbol": "5347",
+      "name": "世界",
+      "shares": 63000,
+      "weight": 0.0
+    }
   ]
 }
